@@ -1,26 +1,29 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-<title>Receiver</title>
-<link rel="stylesheet" href="style.css">
+  <title>Receiver</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+  <h2>Receiver</h2>
 
-<h2>Receiver</h2>
+  <input id="joinKey" placeholder="Enter session key">
+  <button onclick="joinSession()">Join Session</button>
+  <p id="joinStatus"></p>
 
-<input id="joinKey" placeholder="Enter session key">
+  <hr>
 
-<button onclick="joinSession()">Join Session</button>
+  <h3>Receive Text</h3>
+  <button onclick="receiveText()">Receive Text</button>
+  <p id="receivedText"></p>
 
-<p id="joinStatus"></p>
+  <hr>
 
-<button onclick="receiveData()">Receive</button>
+  <h3>Receive File</h3>
+  <button onclick="checkFile()">Check File</button>
+  <p id="fileInfo"></p>
+  <a id="downloadLink" href="#" style="display:none;">Download File</a>
 
-<p id="received"></p>
-
-<script src="script.js"></script>
-
+  <script src="script.js"></script>
 </body>
 </html>

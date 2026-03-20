@@ -1,138 +1,274 @@
-const express = require("express")
-const cors = require("cors")
-const crypto = require("crypto")
-const { createClient } = require("redis")
 
-const app = express()
+const express = require("express");
+const cors = require("cors");
+const crypto = require("crypto");
+const path = require("path");
+const fs = require("fs");
+const multer = require("multer");
+const { createClient } = require("redis");
 
-app.use(cors())
-app.use(express.json())
-app.use(express.static("public"))
+const app = express();
 
-const PORT = 3000
+app.use(cors());
+app.use(express.json());
+app.use(express.static("public"));
 
-const redisClient = createClient()
+const PORT = 3000;
+const UPLOAD_DIR = path.join(__dirname, "uploads");
 
-redisClient.on("error",(err)=>console.log("Redis Error",err))
-
-async function connectRedis(){
- await redisClient.connect()
- console.log("Redis Connected")
+// ensure uploads folder exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  if (fs.existsSync(UPLOAD_DIR)) {
+  const stat = fs.statSync(UPLOAD_DIR);
+  if (!stat.isDirectory()) {
+    fs.unlinkSync(UPLOAD_DIR);
+    fs.mkdirSync(UPLOAD_DIR);
+  }
+} else {
+  fs.mkdirSync(UPLOAD_DIR);
+}
 }
 
-connectRedis()
+// Redis setup
+const redisClient = createClient();
 
+redisClient.on("error", (err) => console.log("Redis Error:", err));
 
-function generateKey(){
- return crypto.randomBytes(3).toString("hex").toUpperCase()
+async function connectRedis() {
+  await redisClient.connect();
+  console.log("Redis Connected");
+}
+connectRedis();
+
+// secure key
+function generateKey() {
+  return crypto.randomBytes(3).toString("hex").toUpperCase();
 }
 
+// multer setup
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: function (req, file, cb) {
+    const uniqueName =
+      Date.now() + "-" + crypto.randomBytes(4).toString("hex") + path.extname(file.originalname);
+    cb(null, uniqueName);
+  },
+});
 
-app.post("/session/create", async (req,res)=>{
+const upload = multer({ storage });
 
- const key = generateKey()
+// helper: get session
+async function getSession(key) {
+  const data = await redisClient.get(key);
+  if (!data) return null;
+  return JSON.parse(data);
+}
 
- const session = {
-  senderConnected:true,
-  receiverConnected:false,
-  data:null
- }
+// helper: save session with TTL 5 min
+async function saveSession(key, session) {
+  await redisClient.set(key, JSON.stringify(session), { EX: 300 });
+}
 
- await redisClient.set(
-  key,
-  JSON.stringify(session),
-  { EX:300 }
- )
+// CREATE SESSION
+app.post("/session/create", async (req, res) => {
+  const key = generateKey();
 
- res.json({sessionKey:key})
-})
+  const session = {
+    senderConnected: true,
+    receiverConnected: false,
+    textData: null,
+    file: null, // { storedName, originalName, mimeType, size }
+    createdAt: Date.now(),
+  };
 
-app.post("/session/join/:key", async (req,res)=>{
+  await saveSession(key, session);
 
- const key = req.params.key
+  res.json({ sessionKey: key });
+});
 
- const data = await redisClient.get(key)
+// JOIN SESSION
+app.post("/session/join/:key", async (req, res) => {
+  const key = req.params.key;
 
- if(!data){
-  return res.json({message:"Invalid key"})
- }
+  const session = await getSession(key);
+  if (!session) {
+    return res.json({ message: "Invalid key" });
+  }
 
- let session = JSON.parse(data)
+  session.receiverConnected = true;
+  await saveSession(key, session);
 
- session.receiverConnected = true
+  res.json({ message: "Receiver connected" });
+});
 
- await redisClient.set(key, JSON.stringify(session), {EX:300})
+// STATUS
+app.get("/session/status/:key", async (req, res) => {
+  const key = req.params.key;
 
- res.json({message:"Receiver connected"})
-})
+  const session = await getSession(key);
+  if (!session) {
+    return res.json({ status: "invalid" });
+  }
 
+  res.json({
+    receiverConnected: session.receiverConnected,
+    hasText: !!session.textData,
+    hasFile: !!session.file,
+  });
+});
 
-app.get("/session/status/:key", async (req,res)=>{
+// SEND TEXT
+app.post("/session/send/:key", async (req, res) => {
+  const key = req.params.key;
+  const { message } = req.body;
 
- const key = req.params.key
+  const session = await getSession(key);
+  if (!session) {
+    return res.json({ message: "Invalid key" });
+  }
 
- const data = await redisClient.get(key)
+  if (!session.receiverConnected) {
+    return res.json({ message: "Receiver not connected" });
+  }
 
- if(!data){
-  return res.json({status:"invalid"})
- }
+  session.textData = message || "";
+  await saveSession(key, session);
 
- const session = JSON.parse(data)
+  res.json({ message: "Text sent successfully" });
+});
 
- res.json({
-  receiverConnected: session.receiverConnected
- })
-})
+// RECEIVE TEXT
+app.get("/session/receive/:key", async (req, res) => {
+  const key = req.params.key;
 
-app.post("/session/send/:key", async (req,res)=>{
+  const session = await getSession(key);
+  if (!session) {
+    return res.json({ message: "Invalid key" });
+  }
 
- const key = req.params.key
- const { message } = req.body
+  if (!session.textData) {
+    return res.json({ message: "Waiting for text" });
+  }
 
- const data = await redisClient.get(key)
+  const text = session.textData;
+  session.textData = null;
+  await saveSession(key, session);
 
- if(!data){
-  return res.json({message:"Invalid key"})
- }
+  res.json({ data: text });
+});
 
- let session = JSON.parse(data)
+// UPLOAD FILE
+app.post("/session/upload/:key", upload.single("file"), async (req, res) => {
+  const key = req.params.key;
 
- if(!session.receiverConnected){
-  return res.json({message:"Receiver not connected"})
- }
+  const session = await getSession(key);
+  if (!session) {
+    // uploaded file delete if session invalid
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.json({ message: "Invalid key" });
+  }
 
- session.data = message
+  if (!session.receiverConnected) {
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.json({ message: "Receiver not connected" });
+  }
 
- await redisClient.set(key, JSON.stringify(session), {EX:300})
+  if (!req.file) {
+    return res.json({ message: "No file uploaded" });
+  }
 
- res.json({message:"Data sent successfully"})
-})
+  // if old file exists, remove it
+  if (session.file && session.file.storedName) {
+    const oldPath = path.join(UPLOAD_DIR, session.file.storedName);
+    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  }
 
-app.get("/session/receive/:key", async (req,res)=>{
+  session.file = {
+    storedName: req.file.filename,
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size,
+  };
 
- const key = req.params.key
+  await saveSession(key, session);
 
- const data = await redisClient.get(key)
+  res.json({
+    message: "File uploaded successfully",
+    fileName: req.file.originalname,
+  });
+});
 
- if(!data){
-  return res.json({message:"Invalid key"})
- }
+// FILE INFO FOR RECEIVER
+app.get("/session/file-info/:key", async (req, res) => {
+  const key = req.params.key;
 
- let session = JSON.parse(data)
+  const session = await getSession(key);
+  if (!session) {
+    return res.json({ message: "Invalid key" });
+  }
 
- if(!session.data){
-  return res.json({message:"Waiting for data"})
- }
+  if (!session.file) {
+    return res.json({ message: "No file available" });
+  }
 
- const message = session.data
+  res.json({
+    fileName: session.file.originalName,
+    mimeType: session.file.mimeType,
+    size: session.file.size,
+  });
+});
 
- session.data = null
+// DOWNLOAD FILE
+app.get("/session/download/:key", async (req, res) => {
+  const key = req.params.key;
 
- await redisClient.set(key, JSON.stringify(session), {EX:300})
+  const session = await getSession(key);
+  if (!session) {
+    return res.status(404).send("Invalid key");
+  }
 
- res.json({data:message})
-})
+  if (!session.file) {
+    return res.status(404).send("No file available");
+  }
 
-app.listen(PORT,()=>{
- console.log("Server running on port",PORT)
-})
+  const filePath = path.join(UPLOAD_DIR, session.file.storedName);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).send("File not found");
+  }
+
+  const originalName = session.file.originalName;
+
+  res.download(filePath, originalName, async (err) => {
+    if (!err) {
+      // after successful download, cleanup file metadata + file
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        session.file = null;
+        await saveSession(key, session);
+      } catch (e) {
+        console.log("Cleanup error:", e.message);
+      }
+    }
+  });
+});
+
+// optional manual end session
+app.delete("/session/end/:key", async (req, res) => {
+  const key = req.params.key;
+  const session = await getSession(key);
+
+  if (session && session.file && session.file.storedName) {
+    const filePath = path.join(UPLOAD_DIR, session.file.storedName);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+
+  await redisClient.del(key);
+  res.json({ message: "Session ended" });
+});
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});

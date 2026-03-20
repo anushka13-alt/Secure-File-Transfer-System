@@ -1,26 +1,30 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-<title>Sender</title>
-<link rel="stylesheet" href="style.css">
+  <title>Sender</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+  <h2>Sender</h2>
 
-<h2>Sender</h2>
+  <button onclick="createSession()">Generate Key</button>
+  <h3 id="key"></h3>
+  <p id="status">Waiting for receiver...</p>
 
-<button onclick="createSession()">Generate Key</button>
+  <hr>
 
-<h3 id="key"></h3>
+  <h3>Send Text</h3>
+  <input id="message" placeholder="Type message">
+  <button onclick="sendText()">Send Text</button>
 
-<p id="status">Waiting for receiver...</p>
+  <hr>
 
-<input id="message" placeholder="Type message">
+  <h3>Send File (Image / PDF)</h3>
+  <input type="file" id="fileInput" accept="image/*,.pdf">
+  <button onclick="uploadFile()">Upload File</button>
 
-<button onclick="sendData()">Send</button>
+  <p id="senderMsg"></p>
 
-<script src="script.js"></script>
-
+  <script src="script.js"></script>
 </body>
 </html>
