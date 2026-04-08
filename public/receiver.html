@@ -1,29 +1,251 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Receiver</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureFileSync | Receiver Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,#0f0c29,#1a1a3e,#0f0c29);min-height:100vh;padding:30px;}
+        .container{max-width:900px;margin:0 auto;}
+        .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;}
+        .top-bar h1{font-size:1.8rem;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+        .back-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(102,126,234,0.5);padding:10px 20px;border-radius:30px;color:white;cursor:pointer;}
+        .card{background:rgba(20,20,45,0.7);backdrop-filter:blur(12px);border-radius:28px;border:1px solid rgba(102,126,234,0.3);margin-bottom:20px;}
+        .card-head{padding:22px 28px;background:rgba(0,0,0,0.4);border-bottom:1px solid rgba(255,255,255,0.05);}
+        .card-head h2{font-size:1.3rem;color:#fff;}.card-head h2 i{margin-right:10px;color:#764ba2;}
+        .card-body{padding:28px;}
+        .input-group{margin-bottom:20px;}
+        .input-group label{display:block;margin-bottom:8px;color:#c4c4e0;font-size:0.8rem;}
+        .input-group input{width:100%;padding:12px 16px;background:rgba(0,0,0,0.4);border:1px solid rgba(102,126,234,0.3);border-radius:12px;color:#fff;font-size:0.9rem;}
+        .btn{padding:12px 24px;border-radius:12px;font-weight:600;cursor:pointer;border:none;font-size:0.9rem;margin:5px;}
+        .btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:white;}
+        .btn-second{background:rgba(255,255,255,0.08);color:#c4c4e0;border:1px solid rgba(102,126,234,0.4);}
+        .btn-danger{background:rgba(239,68,68,0.8);color:white;border:1px solid #ef4444;}
+        .btn-danger:hover{background:#ef4444;}
+        .btn-block{width:100%;}
+        .info-box{background:rgba(0,0,0,0.3);border-radius:14px;padding:15px;margin:15px 0;}
+        .info-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);}
+        .info-label{color:#a0a0c0;font-size:0.8rem;}
+        .info-value{color:#fff;font-weight:500;}
+        .alert-box{padding:12px 15px;border-radius:12px;margin:15px 0;font-size:0.8rem;}
+        .alert-green{background:rgba(16,185,129,0.15);border-left:3px solid #10b981;color:#10b981;}
+        .alert-red{background:rgba(239,68,68,0.15);border-left:3px solid #ef4444;color:#ef4444;}
+        .alert-blue{background:rgba(59,130,246,0.15);border-left:3px solid #3b82f6;color:#3b82f6;}
+        .alert-yellow{background:rgba(245,158,11,0.15);border-left:3px solid #f59e0b;color:#f59e0b;}
+        hr{margin:20px 0;border-color:rgba(255,255,255,0.05);}
+        .msg-box{background:rgba(0,0,0,0.5);border-radius:12px;padding:15px;margin:15px 0;word-wrap:break-word;}
+        .toast-popup{position:fixed;top:20px;right:20px;background:#ef4444;color:white;padding:15px 25px;border-radius:12px;z-index:1000;animation:slideIn 0.3s ease;}
+        @keyframes slideIn{from{transform:translateX(100%);opacity:0;}to{transform:translateX(0);opacity:1;}}
+    </style>
 </head>
 <body>
-  <h2>Receiver</h2>
-
-  <input id="joinKey" placeholder="Enter session key">
-  <button onclick="joinSession()">Join Session</button>
-  <p id="joinStatus"></p>
-
-  <hr>
-
-  <h3>Receive Text</h3>
-  <button onclick="receiveText()">Receive Text</button>
-  <p id="receivedText"></p>
-
-  <hr>
-
-  <h3>Receive File</h3>
-  <button onclick="checkFile()">Check File</button>
-  <p id="fileInfo"></p>
-  <a id="downloadLink" href="#" style="display:none;">Download File</a>
-
-  <script src="script.js"></script>
+    <div class="container">
+        <div class="top-bar">
+            <h1><i class="fas fa-download"></i> Receiver Panel</h1>
+            <button class="back-btn" onclick="goHome()"><i class="fas fa-arrow-left"></i> Home</button>
+        </div>
+        <div class="card">
+            <div class="card-head"><h2><i class="fas fa-plug"></i> Join Session</h2></div>
+            <div class="card-body">
+                <div class="input-group">
+                    <label>Session Code</label>
+                    <input type="text" id="sessionInput" placeholder="Paste code here">
+                </div>
+                <button class="btn btn-primary btn-block" onclick="joinNow()">Connect</button>
+                <div id="sessionPanel" style="display:none;">
+                    <div class="info-box">
+                        <div class="info-row"><span class="info-label">Status</span><span class="info-value" id="sessionState">--</span></div>
+                        <div class="info-row"><span class="info-label">Connection</span><span class="info-value" id="connectState">--</span></div>
+                        <div class="info-row"><span class="info-label">File</span><span class="info-value" id="fileState">--</span></div>
+                        <div class="info-row"><span class="info-label">Time Left</span><span class="info-value" id="timeLeft">--</span></div>
+                    </div>
+                    
+                    <div class="alert-box alert-yellow">
+                        <i class="fas fa-exclamation-triangle"></i> Click below to end this session
+                    </div>
+                    <button class="btn btn-danger btn-block" onclick="endSession()">
+                        <i class="fas fa-power-off"></i> End Session
+                    </button>
+                    
+                    <hr><h3><i class="fas fa-envelope"></i> Get Text</h3>
+                    <button class="btn btn-second btn-block" onclick="getText()">Check Text</button>
+                    <div id="textBox" style="display:none;" class="msg-box"></div>
+                    
+                    <hr><h3><i class="fas fa-file"></i> Get File</h3>
+                    <button class="btn btn-second btn-block" onclick="getFileInfo()">Check File</button>
+                    <div id="fileInfoBox"></div>
+                    <a id="downloadLink" href="#" style="display:none;" class="btn btn-primary btn-block" style="margin-top:15px;">Download File</a>
+                </div>
+                <div id="msgArea"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let myCode = null;
+        let intervalId = null;
+        
+        function showToast(msg){
+            let toast=document.createElement('div');
+            toast.className='toast-popup';
+            toast.innerHTML=msg;
+            document.body.appendChild(toast);
+            setTimeout(()=>{toast.remove();},3000);
+        }
+        
+        function showAlert(msg,type){
+            let box=document.getElementById('msgArea');
+            let cls=type==='success'?'alert-green':(type==='error'?'alert-red':'alert-blue');
+            box.innerHTML=`<div class="alert-box ${cls}">${msg}</div>`;
+            setTimeout(()=>{if(box.innerHTML.includes(msg)) box.innerHTML='';},4000);
+        }
+        
+        function goHome(){
+            if(intervalId) clearInterval(intervalId);
+            window.location.href='/';
+        }
+        
+        // NEW: Auto fill session code from URL parameter (for shareable links)
+        function loadCodeFromUrl(){
+            let urlParams = new URLSearchParams(window.location.search);
+            let sessionCode = urlParams.get('code');
+            if(sessionCode){
+                document.getElementById('sessionInput').value = sessionCode;
+                showAlert('Session code loaded from join link! Click Connect.','success');
+                // Auto-connect after 1 second
+                setTimeout(() => {
+                    joinNow();
+                }, 1000);
+            }
+        }
+        
+        async function joinNow(){
+            let code=document.getElementById('sessionInput').value.trim();
+            if(!code){showAlert('Enter session code','error');return;}
+            myCode=code;
+            try{
+                let res=await fetch(`/session/join/${code}`,{method:'POST'});
+                let data=await res.json();
+                if(data.msg==='receiver joined the session'){
+                    document.getElementById('sessionPanel').style.display='block';
+                    showAlert('Connected to session!','success');
+                    startChecking();
+                }else{
+                    showAlert(data.msg||'Connection failed','error');
+                }
+            }catch(e){showAlert('Connection error','error');}
+        }
+        
+        async function startChecking(){
+            if(intervalId) clearInterval(intervalId);
+            
+            let checkSession=async()=>{
+                if(!myCode) return;
+                try{
+                    let res=await fetch(`/session/info/${myCode}`);
+                    let data=await res.json();
+                    
+                    if(!data.exists){
+                        showToast('⚠️ Session was terminated! Redirecting to home...');
+                        if(intervalId) clearInterval(intervalId);
+                        setTimeout(()=>{
+                            window.location.href='/';
+                        },2000);
+                        return;
+                    }
+                    
+                    if(data.exists){
+                        document.getElementById('sessionState').innerHTML=data.status==='alive'?'✅ Active':'❌ Expired';
+                        document.getElementById('connectState').innerHTML=data.receiverOnline?'✅ Connected':'⏳ Waiting';
+                        document.getElementById('fileState').innerHTML=data.hasFile?'✅ Ready':'❌ No file';
+                        if(data.remainingTime){
+                            let mins=Math.floor(data.remainingTime/60);
+                            let secs=Math.floor(data.remainingTime%60);
+                            document.getElementById('timeLeft').innerHTML=`${mins}:${secs.toString().padStart(2,'0')}`;
+                            if(data.remainingTime<30) document.getElementById('timeLeft').style.color='#ef4444';
+                        }
+                    }
+                }catch(e){
+                    console.log('Check error:',e);
+                }
+            };
+            
+            checkSession();
+            intervalId=setInterval(checkSession,2000);
+        }
+        
+        async function getText(){
+            if(!myCode){showAlert('Join a session first','error');return;}
+            try{
+                let res=await fetch(`/session/receive/${myCode}`);
+                let data=await res.json();
+                let showDiv=document.getElementById('textBox');
+                if(data.data){
+                    showDiv.style.display='block';
+                    showDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-envelope"></i> "${data.data}"</div>`;
+                    showAlert('Text message received!','success');
+                    showToast('📨 New text message!');
+                }else{
+                    showDiv.style.display='block';
+                    showDiv.innerHTML=`<div class="alert-box alert-blue">${data.msg||'No text yet'}</div>`;
+                    setTimeout(()=>{showDiv.style.display='none';},3000);
+                }
+            }catch(e){showAlert('Error','error');}
+        }
+        
+        async function getFileInfo(){
+            if(!myCode){showAlert('Join a session first','error');return;}
+            try{
+                let res=await fetch(`/session/file-info/${myCode}`);
+                let data=await res.json();
+                let infoDiv=document.getElementById('fileInfoBox');
+                let downLink=document.getElementById('downloadLink');
+                if(data.fileName){
+                    let kb=(data.fileSize/1024).toFixed(2);
+                    infoDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-file"></i> ${data.fileName}<br><small>${kb} KB</small></div>`;
+                    downLink.href=`/session/download/${myCode}`;
+                    downLink.style.display='block';
+                    showAlert('File ready to download!','success');
+                    showToast('📁 File received from sender!');
+                }else{
+                    infoDiv.innerHTML=`<div class="alert-box alert-blue">${data.msg||'No file yet'}</div>`;
+                    downLink.style.display='none';
+                }
+            }catch(e){showAlert('Error','error');}
+        }
+        
+        async function endSession(){
+            if(!myCode){
+                showAlert('No active session','error');
+                return;
+            }
+            
+            let confirmEnd=confirm('End this session? Both you and sender will go back to home page.');
+            if(!confirmEnd) return;
+            
+            try{
+                let res=await fetch(`/session/terminate/${myCode}`,{method:'POST'});
+                let data=await res.json();
+                if(data.terminated===true || data.msg.includes('terminated')){
+                    showToast('✅ Session terminated! Redirecting to home...');
+                    if(intervalId) clearInterval(intervalId);
+                    setTimeout(()=>{
+                        window.location.href='/';
+                    },1500);
+                }else{
+                    showAlert(data.msg||'Failed to end','error');
+                }
+            }catch(e){
+                showAlert('Error ending session','error');
+            }
+        }
+        
+        // Run when page loads to check for code in URL
+        window.addEventListener('DOMContentLoaded', function() {
+            loadCodeFromUrl();
+        });
+    </script>
 </body>
 </html>
