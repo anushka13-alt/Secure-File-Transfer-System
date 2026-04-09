@@ -4,10 +4,9 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
-const { createClient } = require("redis");
+const redis = require("redis");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
@@ -15,475 +14,215 @@ app.use(express.static("public"));
 const PORT = 3000;
 const STORE_FOLDER = path.join(__dirname, "uploads");
 
-// make sure the folder is there before we use it
 if (!fs.existsSync(STORE_FOLDER)) {
   fs.mkdirSync(STORE_FOLDER);
 }
 
-// setup our redis database connection
-const redisConnection = createClient();
+// Local Redis connection (for Memurai)
+const redisClient = redis.createClient({
+  socket: {
+    host: '127.0.0.1',
+    port: 6379
+  }
+});
 
-redisConnection.on("error", (err) => console.log("Redis issue:", err));
+redisClient.on('error', (err) => console.log('Redis Error:', err));
+redisClient.on('connect', () => console.log('✅ Redis (Memurai) Connected'));
 
-async function startRedis() {
-  await redisConnection.connect();
-  console.log("Redis is ready");
-}
-startRedis();
+redisClient.connect();
 
-// this creates a short unique code for each session
-function makeSessionCode() {
+function makeCode() {
   return crypto.randomBytes(3).toString("hex").toUpperCase();
 }
 
-// ENCRYPTION PART this is the secret key for encryption - same on both sides
-const SECRET_KEY = Buffer.from("12345678901234567890123456789012");
+// Encryption
+const KEY = Buffer.from("12345678901234567890123456789012");
 
-// function to lock the file data
-function lockData(info) {
-  const initVector = crypto.randomBytes(16);
-  const cipherLock = crypto.createCipheriv("aes-256-cbc", SECRET_KEY, initVector);
-  const lockedData = Buffer.concat([cipherLock.update(info), cipherLock.final()]);
-  return Buffer.concat([initVector, lockedData]);
+function encrypt(data) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-cbc", KEY, iv);
+  const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+  return Buffer.concat([iv, encrypted]);
 }
 
-// function to unlock the file data
-function unlockData(lockedInfo) {
-  const initVector = lockedInfo.slice(0, 16);
-  const lockedData = lockedInfo.slice(16);
-  const cipherUnlock = crypto.createDecipheriv("aes-256-cbc", SECRET_KEY, initVector);
-  return Buffer.concat([cipherUnlock.update(lockedData), cipherUnlock.final()]);
+function decrypt(data) {
+  const iv = data.slice(0, 16);
+  const encrypted = data.slice(16);
+  const decipher = crypto.createDecipheriv("aes-256-cbc", KEY, iv);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
 }
 
-// FILE UPLOAD SETUP 
-const fileStore = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, STORE_FOLDER);
-  },
-  filename: function (req, file, cb) {
-    const uniqueFileName = Date.now() + "-" + crypto.randomBytes(4).toString("hex") + path.extname(file.originalname);
-    cb(null, uniqueFileName);
-  },
-});
+// Multer
+const upload = multer({ dest: STORE_FOLDER });
 
-const uploadFile = multer({ storage: fileStore });
-
-// SESSION WITH TIMEOUT making a new session - if no timeout given, use 300 seconds (5 minutes)
-async function makeNewSession(customTimeout = null) {
-  const sessionCode = makeSessionCode();
-  const timeToLive = customTimeout || 300;
-  
-  const sessionInfo = {
-    id: sessionCode,
-    currentState: "alive",
-    senderOnline: true,
-    receiverOnline: false,
-    textMsg: null,
-    uploadedFile: null,
-    startTime: Date.now(),
-    lastSeen: Date.now(),
-    expireAfter: timeToLive,
-    bytesDone: 0,
-    fileStatus: "waiting"
-  };
-  await redisConnection.set(sessionCode, JSON.stringify(sessionInfo), { EX: timeToLive });
-  
-  console.log(`new session made: ${sessionCode}`);
-  console.log(`will expire in: ${timeToLive} seconds`);
-  return sessionCode;
+async function saveSession(code, data, ttl) {
+  await redisClient.setEx(code, ttl, JSON.stringify(data));
+  console.log(`✅ Saved ${code}`);
 }
 
-// this keeps the session alive while someone is using it
-async function keepSessionAlive(sessionCode) {
-  const sessionInfo = await fetchSession(sessionCode);
-  if (sessionInfo && sessionInfo.currentState === "alive") {
-    sessionInfo.lastSeen = Date.now();
-    const timeToLive = sessionInfo.expireAfter;
-    await redisConnection.set(sessionCode, JSON.stringify(sessionInfo), { EX: timeToLive });
-    console.log(`session ${sessionCode} is still active`);
-    return true;
-  }
-  return false;
-}
-
-// track how much data has been sent
-async function trackProgress(sessionCode, bytesDone, totalBytes = null) {
-  const sessionInfo = await fetchSession(sessionCode);
-  if (sessionInfo && sessionInfo.currentState === "alive") {
-    sessionInfo.bytesDone = bytesDone;
-    if (totalBytes) {
-      sessionInfo.fileStatus = "sending";
-    }
-    const timeToLive = sessionInfo.expireAfter;
-    await redisConnection.set(sessionCode, JSON.stringify(sessionInfo), { EX: timeToLive });
-    const percentDone = totalBytes ? ((bytesDone / totalBytes) * 100).toFixed(2) : 0;
-    console.log(`transfer: ${percentDone}% done (${bytesDone}/${totalBytes} bytes)`);
-    return true;
-  }
-  return false;
-}
-
-// clean up session when transfer finishes
-async function finishSession(sessionCode) {
-  const sessionInfo = await fetchSession(sessionCode);
-  if (sessionInfo) {
-    sessionInfo.currentState = "done";
-    sessionInfo.fileStatus = "done";
-    sessionInfo.completedAt = Date.now();
-    await redisConnection.del(sessionCode);
-    console.log(`session ${sessionCode} is done and removed`);
-    return true;
-  }
-  return false;
-}
-
-// check if session has expired
-function checkIfExpired(sessionInfo) {
-  if (!sessionInfo) return true;
-  const rightNow = Date.now();
-  const lastActive = sessionInfo.lastSeen || sessionInfo.startTime;
-  const maxTime = (sessionInfo.expireAfter || 300) * 1000;
-  return (rightNow - lastActive) > maxTime;
-}
-
-// get session data from redis
-async function fetchSession(sessionCode) {
-  const rawData = await redisConnection.get(sessionCode);
-  if (!rawData) return null;
-  
-  const sessionInfo = JSON.parse(rawData);
-  if (sessionInfo.currentState === "alive" && checkIfExpired(sessionInfo)) {
-    console.log(`session ${sessionCode} expired from no activity`);
-    await redisConnection.del(sessionCode);
+async function loadSession(code) {
+  const val = await redisClient.get(code);
+  if (!val) return null;
+  try {
+    return JSON.parse(val);
+  } catch(e) {
+    console.log(`❌ Parse error ${code}`);
     return null;
   }
-  return sessionInfo;
 }
 
-// save session back to redis
-async function storeSession(sessionCode, sessionInfo, customTTL = null) {
-  const timeToLive = customTTL || sessionInfo.expireAfter || 300;
-  await redisConnection.set(sessionCode, JSON.stringify(sessionInfo), { EX: timeToLive });
+async function deleteSession(code) {
+  await redisClient.del(code);
+  console.log(`🗑️ Deleted ${code}`);
 }
 
-// API ENDPOINTS-> make a new session - frontend calls this first
 app.post("/session/create", async (req, res) => {
-  const { timeout } = req.body;
-  const sessionCode = await makeNewSession(timeout);
+  const code = makeCode();
+  const ttl = req.body.timeout || 300;
   
-  res.json({ 
-    sessionKey: sessionCode,
-    timeout: timeout || 300,
-    msg: `session ready - will expire in ${timeout || 300} seconds`
-  });
-});
-
-// receiver joins using the session code
-app.post("/session/join/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    return res.json({ msg: "session not found or already expired" });
-  }
-
-  sessionInfo.receiverOnline = true;
-  await keepSessionAlive(sessionCode);
-  await storeSession(sessionCode, sessionInfo);
-  res.json({ msg: "receiver joined the session" });
-});
-
-// check what's happening in the session
-app.get("/session/status/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    return res.json({ 
-      status: "gone",
-      msg: "session is not there anymore"
-    });
-  }
-
-  res.json({
-    status: sessionInfo.currentState,
-    receiverOnline: sessionInfo.receiverOnline,
-    hasText: !!sessionInfo.textMsg,
-    hasFile: !!sessionInfo.uploadedFile,
-    fileStatus: sessionInfo.fileStatus,
-    timeout: sessionInfo.expireAfter,
-    lastSeen: sessionInfo.lastSeen
-  });
-});
-
-// sender sends a text message
-app.post("/session/send/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const { message } = req.body;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    return res.json({ msg: "session not found" });
-  }
-  if (!sessionInfo.receiverOnline) {
-    return res.json({ msg: "receiver not connected yet" });
-  }
-  sessionInfo.textMsg = message || "";
-  await keepSessionAlive(sessionCode);
-  await storeSession(sessionCode, sessionInfo);
-
-  res.json({ msg: "text message sent" });
-});
-
-// receiver gets the text message
-app.get("/session/receive/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    return res.json({ msg: "session not found" });
-  }
-  if (!sessionInfo.textMsg) {
-    return res.json({ msg: "nothing to receive yet" });
-  }
-  
-  const messageText = sessionInfo.textMsg;
-  sessionInfo.textMsg = null;
-  await keepSessionAlive(sessionCode);
-  await storeSession(sessionCode, sessionInfo);
-  
-  res.json({ data: messageText });
-});
-
-// terminate session immediately after receiving content
-app.post("/session/terminate/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  
-  if (!sessionInfo) {
-    return res.json({ msg: "session not found" });
-  }
-  
-  if (sessionInfo.uploadedFile && sessionInfo.uploadedFile.storedName) {
-    const filePath = path.join(STORE_FOLDER, sessionInfo.uploadedFile.storedName);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  }
-  
-  await redisConnection.del(sessionCode);
-  console.log(`session ${sessionCode} terminated`);
-  
-  res.json({ 
-    msg: "session terminated successfully",
-    terminated: true 
-  });
-});
-
-// upload a file - with encryption
-app.post("/session/upload/:code", uploadFile.single("file"), async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    return res.json({ msg: "session not found" });
-  }
-  if (!sessionInfo.receiverOnline) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    return res.json({ msg: "receiver not there" });
-  }
-  if (!req.file) {
-    return res.json({ msg: "no file selected" });
-  }
-  // remove old file if present
-  if (sessionInfo.uploadedFile && sessionInfo.uploadedFile.storedName) {
-    const oldFilePath = path.join(STORE_FOLDER, sessionInfo.uploadedFile.storedName);
-    if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
-  }
-  await keepSessionAlive(sessionCode);
-  await trackProgress(sessionCode, 0, req.file.size);
-  
-  // lock the file with encryption
-  const originalData = fs.readFileSync(req.file.path);
-  const lockedData = lockData(originalData);
-  fs.writeFileSync(req.file.path, lockedData);
-  console.log(`file locked and saved: ${req.file.filename}`);
-  await trackProgress(sessionCode, req.file.size, req.file.size);
-  
-  sessionInfo.uploadedFile = {
-    storedName: req.file.filename,
-    originalName: req.file.originalname,
-    fileType: req.file.mimetype,
-    fileSize: req.file.size,
+  const session = {
+    id: code,
+    active: true,
+    receiverOnline: false,
+    text: null,
+    file: null,
+    lastSeen: Date.now(),
+    ttl: ttl
   };
-  sessionInfo.fileStatus = "done";
-  await storeSession(sessionCode, sessionInfo);
+  
+  await saveSession(code, session, ttl);
+  res.json({ sessionKey: code, timeout: ttl });
+});
+
+app.post("/session/join/:code", async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session) return res.json({ msg: "session not found" });
+  
+  session.receiverOnline = true;
+  session.lastSeen = Date.now();
+  await saveSession(code, session, session.ttl);
+  res.json({ msg: "receiver joined" });
+});
+
+app.get("/session/status/:code", async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session) return res.json({ status: "gone" });
   
   res.json({
-    msg: "file uploaded and locked",
-    fileName: req.file.originalname,
-    fileSize: req.file.size
+    receiverOnline: session.receiverOnline,
+    hasText: !!session.text,
+    hasFile: !!session.file
   });
 });
 
-// get file information for receiver
+app.post("/session/send/:code", async (req, res) => {
+  const code = req.params.code;
+  const { message } = req.body;
+  const session = await loadSession(code);
+  if (!session) return res.json({ msg: "session not found" });
+  
+  session.text = message;
+  session.lastSeen = Date.now();
+  await saveSession(code, session, session.ttl);
+  res.json({ msg: "sent" });
+});
+
+app.get("/session/receive/:code", async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session) return res.json({ msg: "session not found" });
+  
+  const text = session.text;
+  session.text = null;
+  await saveSession(code, session, session.ttl);
+  res.json({ data: text });
+});
+
+app.post("/session/upload/:code", upload.single("file"), async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session) return res.json({ msg: "session not found" });
+  
+  const file = req.file;
+  if (!file) return res.json({ msg: "no file" });
+  
+  const raw = fs.readFileSync(file.path);
+  const encrypted = encrypt(raw);
+  fs.writeFileSync(file.path, encrypted);
+  
+  session.file = {
+    name: file.filename,
+    original: file.originalname,
+    type: file.mimetype,
+    size: file.size
+  };
+  session.lastSeen = Date.now();
+  await saveSession(code, session, session.ttl);
+  res.json({ msg: "uploaded", fileName: file.originalname });
+});
+
 app.get("/session/file-info/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (!sessionInfo) {
-    return res.json({ msg: "session not found" });
-  }
-  if (!sessionInfo.uploadedFile) {
-    return res.json({ msg: "no file ready yet" });
-  }
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session || !session.file) return res.json({ msg: "no file" });
+  
   res.json({
-    fileName: sessionInfo.uploadedFile.originalName,
-    fileType: sessionInfo.uploadedFile.fileType,
-    fileSize: sessionInfo.uploadedFile.fileSize,
+    fileName: session.file.original,
+    fileSize: session.file.size
   });
 });
 
-// download the file - with decryption
 app.get("/session/download/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-
-  if (!sessionInfo) {
-    return res.status(404).send("session not found");
-  }
-  if (!sessionInfo.uploadedFile) {
-    return res.status(404).send("no file to download");
-  }
-  const filePath = path.join(STORE_FOLDER, sessionInfo.uploadedFile.storedName);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send("file missing");
-  }
-  const originalName = sessionInfo.uploadedFile.originalName;
-  await keepSessionAlive(sessionCode);
-  // unlocking the file before sending
-  const lockedData = fs.readFileSync(filePath);
-  const unlockedData = unlockData(lockedData);
-  const tempFilePath = filePath + ".temp";
-  fs.writeFileSync(tempFilePath, unlockedData);
-  console.log(`file unlocked for download: ${originalName}`);
-  res.download(tempFilePath, originalName, async (err) => {
-    if (!err) {
-      try {
-        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        await finishSession(sessionCode);
-      } catch (e) {
-        console.log("cleanup had an issue:", e.message);
-      }
-    }
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session || !session.file) return res.status(404).send("no file");
+  
+  const filePath = path.join(STORE_FOLDER, session.file.name);
+  if (!fs.existsSync(filePath)) return res.status(404).send("missing");
+  
+  const encrypted = fs.readFileSync(filePath);
+  const decrypted = decrypt(encrypted);
+  const temp = filePath + ".dec";
+  fs.writeFileSync(temp, decrypted);
+  
+  res.download(temp, session.file.original, async () => {
+    fs.unlinkSync(temp);
+    fs.unlinkSync(filePath);
+    await deleteSession(code);
   });
 });
 
-// get detailed session information
-app.get("/session/info/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  
-  if (!sessionInfo) {
-    return res.json({ 
-      exists: false, 
-      msg: "session not found" 
-    });
+app.post("/session/terminate/:code", async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (session && session.file) {
+    const p = path.join(STORE_FOLDER, session.file.name);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
   }
+  await deleteSession(code);
+  res.json({ msg: "terminated", terminated: true });
+});
+
+app.get("/session/info/:code", async (req, res) => {
+  const code = req.params.code;
+  const session = await loadSession(code);
+  if (!session) return res.json({ exists: false });
   
-  const timeRemaining = sessionInfo.expireAfter - ((Date.now() - (sessionInfo.lastSeen || sessionInfo.startTime)) / 1000);
+  const remaining = session.ttl - ((Date.now() - session.lastSeen) / 1000);
   res.json({
     exists: true,
-    sessionKey: sessionCode,
-    status: sessionInfo.currentState,
-    fileStatus: sessionInfo.fileStatus,
-    timeout: sessionInfo.expireAfter,
-    remainingTime: Math.max(0, timeRemaining),
-    hasFile: !!sessionInfo.uploadedFile,
-    receiverOnline: sessionInfo.receiverOnline
+    remainingTime: Math.max(0, remaining),
+    hasFile: !!session.file,
+    receiverOnline: session.receiverOnline
   });
 });
 
-// manually close a session
-app.delete("/session/end/:code", async (req, res) => {
-  const sessionCode = req.params.code;
-  const sessionInfo = await fetchSession(sessionCode);
-  if (sessionInfo && sessionInfo.uploadedFile && sessionInfo.uploadedFile.storedName) {
-    const filePath = path.join(STORE_FOLDER, sessionInfo.uploadedFile.storedName);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  }
-  await redisConnection.del(sessionCode);
-  console.log(`session ${sessionCode} was closed manually`);
-  res.json({ msg: "session closed" });
-});
-
-// ============================================
-// SHAREABLE SESSION LINK - NEW ENDPOINT
-// ============================================
 app.get("/join/:code", (req, res) => {
-  const sessionCode = req.params.code;
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta http-equiv="refresh" content="0;url=/receiver.html?code=${sessionCode}">
-      <title>Joining SecureFileSync...</title>
-      <style>
-        body {
-          font-family: 'Inter', sans-serif;
-          background: linear-gradient(135deg, #0f0c29, #1a1a3e, #0f0c29);
-          min-height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          text-align: center;
-          color: white;
-          margin: 0;
-        }
-        .loader {
-          width: 50px;
-          height: 50px;
-          border: 3px solid rgba(102,126,234,0.3);
-          border-radius: 50%;
-          border-top-color: #667eea;
-          animation: spin 1s ease-in-out infinite;
-          margin: 20px auto;
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        .code-box {
-          background: rgba(0,0,0,0.5);
-          padding: 10px 20px;
-          border-radius: 30px;
-          font-family: monospace;
-          font-size: 1.2rem;
-          letter-spacing: 2px;
-          margin-top: 15px;
-        }
-      </style>
-    </head>
-    <body>
-      <div>
-        <div class="loader"></div>
-        <h2>Redirecting to secure session...</h2>
-        <div class="code-box">Session: ${sessionCode}</div>
-        <p style="margin-top:20px; font-size:0.8rem; color:#a0a0c0;">If not redirected, <a href="/receiver.html?code=${sessionCode}" style="color:#667eea;">click here</a></p>
-      </div>
-    </body>
-    </html>
-  `);
+  res.redirect(`/receiver.html?code=${req.params.code}`);
 });
 
-setInterval(async () => {
-  console.log(`checking sessions at ${new Date().toLocaleTimeString()}`);// just a background check - runs every minute
-}, 60000);
-
-// start the server
-app.listen(PORT, () => {
-  console.log(`server is running on port ${PORT}`);
-  console.log(`features that are working:`);
-  console.log(`   session timeout is 300 seconds (5 minutes) by default`);
-  console.log(`   auto-extend while transferring`);
-  console.log(`   redis handles inactive sessions`);
-  console.log(`   auto cleanup after download`);
-  console.log(`   instant session termination after receiving content`);
-  console.log(`   shareable session links (/join/:code)`);
-  console.log(`   aes encryption is on`);
-  console.log(`   progress tracking is active`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Server on http://localhost:${PORT}\n`);
 });

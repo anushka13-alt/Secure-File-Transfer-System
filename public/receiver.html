@@ -63,21 +63,24 @@
                         <div class="info-row"><span class="info-label">Time Left</span><span class="info-value" id="timeLeft">--</span></div>
                     </div>
                     
+                    <hr>
+                    <h3><i class="fas fa-envelope"></i> Get Text</h3>
+                    <button class="btn btn-second btn-block" onclick="getText()">Check Text</button>
+                    <div id="textBox" style="display:none;" class="msg-box"></div>
+                    
+                    <hr>
+                    <h3><i class="fas fa-file"></i> Get File</h3>
+                    <button class="btn btn-second btn-block" onclick="getFileInfo()">Check File</button>
+                    <div id="fileInfoBox"></div>
+                    <a id="downloadLink" href="#" style="display:none;" class="btn btn-primary btn-block" style="margin-top:15px;">Download File</a>
+                    
+                    <hr>
                     <div class="alert-box alert-yellow">
                         <i class="fas fa-exclamation-triangle"></i> Click below to end this session
                     </div>
                     <button class="btn btn-danger btn-block" onclick="endSession()">
                         <i class="fas fa-power-off"></i> End Session
                     </button>
-                    
-                    <hr><h3><i class="fas fa-envelope"></i> Get Text</h3>
-                    <button class="btn btn-second btn-block" onclick="getText()">Check Text</button>
-                    <div id="textBox" style="display:none;" class="msg-box"></div>
-                    
-                    <hr><h3><i class="fas fa-file"></i> Get File</h3>
-                    <button class="btn btn-second btn-block" onclick="getFileInfo()">Check File</button>
-                    <div id="fileInfoBox"></div>
-                    <a id="downloadLink" href="#" style="display:none;" class="btn btn-primary btn-block" style="margin-top:15px;">Download File</a>
                 </div>
                 <div id="msgArea"></div>
             </div>
@@ -107,14 +110,12 @@
             window.location.href='/';
         }
         
-        // NEW: Auto fill session code from URL parameter (for shareable links)
         function loadCodeFromUrl(){
             let urlParams = new URLSearchParams(window.location.search);
             let sessionCode = urlParams.get('code');
             if(sessionCode){
                 document.getElementById('sessionInput').value = sessionCode;
-                showAlert('Session code loaded from join link! Click Connect.','success');
-                // Auto-connect after 1 second
+                showAlert('Session code loaded from join link!','success');
                 setTimeout(() => {
                     joinNow();
                 }, 1000);
@@ -125,17 +126,22 @@
             let code=document.getElementById('sessionInput').value.trim();
             if(!code){showAlert('Enter session code','error');return;}
             myCode=code;
+            showAlert('Connecting...','info');
             try{
                 let res=await fetch(`/session/join/${code}`,{method:'POST'});
                 let data=await res.json();
-                if(data.msg==='receiver joined the session'){
+                console.log('Join response:', data);
+                if(data.msg === 'receiver joined' || data.msg === 'receiver joined the session'){
                     document.getElementById('sessionPanel').style.display='block';
-                    showAlert('Connected to session!','success');
+                    showAlert('✅ Connected to session!','success');
                     startChecking();
                 }else{
-                    showAlert(data.msg||'Connection failed','error');
+                    showAlert(data.msg || 'Connection failed','error');
                 }
-            }catch(e){showAlert('Connection error','error');}
+            }catch(e){
+                console.error('Join error:', e);
+                showAlert('Connection error: ' + e.message,'error');
+            }
         }
         
         async function startChecking(){
@@ -144,36 +150,39 @@
             let checkSession=async()=>{
                 if(!myCode) return;
                 try{
-                    let res=await fetch(`/session/info/${myCode}`);
-                    let data=await res.json();
+                    let statusRes=await fetch(`/session/status/${myCode}`);
+                    let status=await statusRes.json();
+                    console.log('Status:', status);
                     
-                    if(!data.exists){
-                        showToast('⚠️ Session was terminated! Redirecting to home...');
+                    if(status.status === 'gone'){
+                        showToast('⚠️ Session terminated! Redirecting...');
                         if(intervalId) clearInterval(intervalId);
-                        setTimeout(()=>{
-                            window.location.href='/';
-                        },2000);
+                        setTimeout(()=>{ window.location.href='/'; },2000);
                         return;
                     }
                     
-                    if(data.exists){
-                        document.getElementById('sessionState').innerHTML=data.status==='alive'?'✅ Active':'❌ Expired';
-                        document.getElementById('connectState').innerHTML=data.receiverOnline?'✅ Connected':'⏳ Waiting';
-                        document.getElementById('fileState').innerHTML=data.hasFile?'✅ Ready':'❌ No file';
-                        if(data.remainingTime){
-                            let mins=Math.floor(data.remainingTime/60);
-                            let secs=Math.floor(data.remainingTime%60);
+                    document.getElementById('sessionState').innerHTML = '✅ Active';
+                    document.getElementById('connectState').innerHTML = status.receiverOnline ? '✅ Connected' : '⏳ Waiting for sender';
+                    document.getElementById('fileState').innerHTML = status.hasFile ? '✅ File Ready' : '❌ No file yet';
+                    
+                    try{
+                        let infoRes=await fetch(`/session/info/${myCode}`);
+                        let info=await infoRes.json();
+                        if(info.exists && info.remainingTime){
+                            let mins=Math.floor(info.remainingTime/60);
+                            let secs=Math.floor(info.remainingTime%60);
                             document.getElementById('timeLeft').innerHTML=`${mins}:${secs.toString().padStart(2,'0')}`;
-                            if(data.remainingTime<30) document.getElementById('timeLeft').style.color='#ef4444';
+                            if(info.remainingTime<30) document.getElementById('timeLeft').style.color='#ef4444';
                         }
-                    }
+                    }catch(e){}
+                    
                 }catch(e){
                     console.log('Check error:',e);
                 }
             };
             
             checkSession();
-            intervalId=setInterval(checkSession,2000);
+            intervalId=setInterval(checkSession,3000);
         }
         
         async function getText(){
@@ -184,15 +193,15 @@
                 let showDiv=document.getElementById('textBox');
                 if(data.data){
                     showDiv.style.display='block';
-                    showDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-envelope"></i> "${data.data}"</div>`;
+                    showDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-envelope"></i> <strong>Message:</strong> "${data.data}"</div>`;
                     showAlert('Text message received!','success');
                     showToast('📨 New text message!');
                 }else{
                     showDiv.style.display='block';
-                    showDiv.innerHTML=`<div class="alert-box alert-blue">${data.msg||'No text yet'}</div>`;
+                    showDiv.innerHTML=`<div class="alert-box alert-blue"><i class="fas fa-info"></i> ${data.msg||'No text message yet'}</div>`;
                     setTimeout(()=>{showDiv.style.display='none';},3000);
                 }
-            }catch(e){showAlert('Error','error');}
+            }catch(e){showAlert('Error: '+e.message,'error');}
         }
         
         async function getFileInfo(){
@@ -204,16 +213,16 @@
                 let downLink=document.getElementById('downloadLink');
                 if(data.fileName){
                     let kb=(data.fileSize/1024).toFixed(2);
-                    infoDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-file"></i> ${data.fileName}<br><small>${kb} KB</small></div>`;
+                    infoDiv.innerHTML=`<div class="alert-box alert-green"><i class="fas fa-file"></i> <strong>${data.fileName}</strong><br><small>${kb} KB | ${data.fileType||'Unknown type'}</small></div>`;
                     downLink.href=`/session/download/${myCode}`;
                     downLink.style.display='block';
-                    showAlert('File ready to download!','success');
+                    showAlert('File is ready to download!','success');
                     showToast('📁 File received from sender!');
                 }else{
-                    infoDiv.innerHTML=`<div class="alert-box alert-blue">${data.msg||'No file yet'}</div>`;
+                    infoDiv.innerHTML=`<div class="alert-box alert-blue"><i class="fas fa-info"></i> ${data.msg||'No file uploaded yet'}</div>`;
                     downLink.style.display='none';
                 }
-            }catch(e){showAlert('Error','error');}
+            }catch(e){showAlert('Error: '+e.message,'error');}
         }
         
         async function endSession(){
@@ -229,7 +238,7 @@
                 let res=await fetch(`/session/terminate/${myCode}`,{method:'POST'});
                 let data=await res.json();
                 if(data.terminated===true || data.msg.includes('terminated')){
-                    showToast('✅ Session terminated! Redirecting to home...');
+                    showToast('✅ Session terminated! Redirecting...');
                     if(intervalId) clearInterval(intervalId);
                     setTimeout(()=>{
                         window.location.href='/';
@@ -238,11 +247,10 @@
                     showAlert(data.msg||'Failed to end','error');
                 }
             }catch(e){
-                showAlert('Error ending session','error');
+                showAlert('Error ending session: '+e.message,'error');
             }
         }
         
-        // Run when page loads to check for code in URL
         window.addEventListener('DOMContentLoaded', function() {
             loadCodeFromUrl();
         });
