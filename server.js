@@ -1,4 +1,6 @@
 const express = require("express");
+const https = require("https");
+const selfsigned = require("selfsigned");
 const cors = require("cors");
 const crypto = require("crypto");
 const path = require("path");
@@ -16,6 +18,29 @@ const STORE_FOLDER = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(STORE_FOLDER)) {
   fs.mkdirSync(STORE_FOLDER);
+}
+
+const CERT_DIR = path.join(__dirname, "certs");
+if (!fs.existsSync(CERT_DIR)) {
+  fs.mkdirSync(CERT_DIR);
+}
+const KEY_PATH = path.join(CERT_DIR, "server.key");
+const CERT_PATH = path.join(CERT_DIR, "server.cert");
+
+if (fs.existsSync(KEY_PATH) && fs.existsSync(CERT_PATH)) {
+  const key = fs.readFileSync(KEY_PATH, "utf8");
+  const cert = fs.readFileSync(CERT_PATH, "utf8");
+  startServer(key, cert);
+} else {
+  console.log("Generating new self-signed certificates (this may take a moment)...");
+  const attrs = [{ name: 'commonName', value: 'localhost' }];
+  selfsigned.generate(attrs, { days: 365, keySize: 2048 }).then(pems => {
+    fs.writeFileSync(KEY_PATH, pems.private, "utf8");
+    fs.writeFileSync(CERT_PATH, pems.cert, "utf8");
+    startServer(pems.private, pems.cert);
+  }).catch(err => {
+    console.error("Certificate generation error", err);
+  });
 }
 
 // Local Redis connection (for Memurai)
@@ -113,7 +138,7 @@ app.get("/session/status/:code", async (req, res) => {
   res.json({
     receiverOnline: session.receiverOnline,
     hasText: !!session.text,
-    hasFile: !!session.file
+    hasFile: !!session.file || (session.files && session.files.length > 0)
   });
 });
 
@@ -140,46 +165,63 @@ app.get("/session/receive/:code", async (req, res) => {
   res.json({ data: text });
 });
 
-app.post("/session/upload/:code", upload.single("file"), async (req, res) => {
+app.post("/session/upload/:code", upload.array("files"), async (req, res) => {
   const code = req.params.code;
   const session = await loadSession(code);
   if (!session) return res.json({ msg: "session not found" });
   
-  const file = req.file;
-  if (!file) return res.json({ msg: "no file" });
+  if (!req.files || req.files.length === 0) return res.json({ msg: "no file" });
   
-  const raw = fs.readFileSync(file.path);
-  const encrypted = encrypt(raw);
-  fs.writeFileSync(file.path, encrypted);
+  if (!session.files) session.files = [];
   
-  session.file = {
-    name: file.filename,
-    original: file.originalname,
-    type: file.mimetype,
-    size: file.size
-  };
+  for(let file of req.files) {
+    const raw = fs.readFileSync(file.path);
+    const encrypted = encrypt(raw);
+    fs.writeFileSync(file.path, encrypted);
+    
+    session.files.push({
+      name: file.filename,
+      original: file.originalname,
+      type: file.mimetype,
+      size: file.size
+    });
+  }
+  
   session.lastSeen = Date.now();
   await saveSession(code, session, session.ttl);
-  res.json({ msg: "uploaded", fileName: file.originalname });
+  res.json({ msg: "uploaded", count: req.files.length });
 });
 
 app.get("/session/file-info/:code", async (req, res) => {
   const code = req.params.code;
   const session = await loadSession(code);
-  if (!session || !session.file) return res.json({ msg: "no file" });
   
-  res.json({
-    fileName: session.file.original,
-    fileSize: session.file.size
-  });
+  const filesList = [];
+  if (session && session.file) {
+    filesList.push({ fileName: session.file.original, fileSize: session.file.size, id: session.file.name });
+  }
+  if (session && session.files) {
+    session.files.forEach(f => filesList.push({ fileName: f.original, fileSize: f.size, id: f.name }));
+  }
+  
+  if (filesList.length === 0) return res.json({ msg: "no file" });
+  res.json({ files: filesList });
 });
 
 app.get("/session/download/:code", async (req, res) => {
   const code = req.params.code;
+  const fileId = req.query.fileId;
   const session = await loadSession(code);
-  if (!session || !session.file) return res.status(404).send("no file");
+  if (!session) return res.status(404).send("no session");
   
-  const filePath = path.join(STORE_FOLDER, session.file.name);
+  let fileMeta = null;
+  if(session.files && fileId) fileMeta = session.files.find(f => f.name === fileId);
+  else if (session.file && (!fileId || session.file.name === fileId)) fileMeta = session.file;
+  else if (!fileId && session.files && session.files.length > 0) fileMeta = session.files[0];
+  
+  if (!fileMeta) return res.status(404).send("file not found");
+  
+  const filePath = path.join(STORE_FOLDER, fileMeta.name);
   if (!fs.existsSync(filePath)) return res.status(404).send("missing");
   
   const encrypted = fs.readFileSync(filePath);
@@ -187,19 +229,33 @@ app.get("/session/download/:code", async (req, res) => {
   const temp = filePath + ".dec";
   fs.writeFileSync(temp, decrypted);
   
-  res.download(temp, session.file.original, async () => {
-    fs.unlinkSync(temp);
-    fs.unlinkSync(filePath);
-    await deleteSession(code);
+  res.download(temp, fileMeta.original, async () => {
+    if(fs.existsSync(temp)) fs.unlinkSync(temp);
+    if(fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    
+    if(session.files) {
+      session.files = session.files.filter(f => f.name !== fileMeta.name);
+      await saveSession(code, session, session.ttl);
+    } else {
+      await deleteSession(code);
+    }
   });
 });
 
 app.post("/session/terminate/:code", async (req, res) => {
   const code = req.params.code;
   const session = await loadSession(code);
-  if (session && session.file) {
-    const p = path.join(STORE_FOLDER, session.file.name);
-    if (fs.existsSync(p)) fs.unlinkSync(p);
+  if (session) {
+    if (session.file) {
+      const p = path.join(STORE_FOLDER, session.file.name);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    }
+    if (session.files) {
+      session.files.forEach(f => {
+        const p = path.join(STORE_FOLDER, f.name);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      });
+    }
   }
   await deleteSession(code);
   res.json({ msg: "terminated", terminated: true });
@@ -214,7 +270,7 @@ app.get("/session/info/:code", async (req, res) => {
   res.json({
     exists: true,
     remainingTime: Math.max(0, remaining),
-    hasFile: !!session.file,
+    hasFile: !!session.file || (session.files && session.files.length > 0),
     receiverOnline: session.receiverOnline
   });
 });
@@ -223,6 +279,9 @@ app.get("/join/:code", (req, res) => {
   res.redirect(`/receiver.html?code=${req.params.code}`);
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Server on http://localhost:${PORT}\n`);
-});
+function startServer(k, c) {
+  const credentials = { key: k, cert: c };
+  https.createServer(credentials, app).listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 Secure Server (HTTPS) running on https://localhost:${PORT}\n`);
+  });
+}
