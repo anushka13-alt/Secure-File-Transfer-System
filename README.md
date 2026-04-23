@@ -257,15 +257,6 @@ http://localhost:3000
 - `Error handling` — Fixed incomplete uploads and connection failures
 - `Final cleanup` — Testing, documentation, and code cleanup
 
----
-
-## 📬 Contact
-
-| Name | Email |
-|------|-------|
-| Ayushi Aswal *(Team Lead)* | ayushiaswal216@gmail.com |
-
----
 
 <div align="center">
 
