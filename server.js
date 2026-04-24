@@ -7,13 +7,14 @@ const path = require("path");
 const fs = require("fs");
 const multer = require("multer");
 const redis = require("redis");
+const os = require("os");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-const PORT = 3000;
+const PORT = 3002;
 const STORE_FOLDER = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(STORE_FOLDER)) {
@@ -43,18 +44,7 @@ if (fs.existsSync(KEY_PATH) && fs.existsSync(CERT_PATH)) {
   });
 }
 
-// Local Redis connection (for Memurai)
-const redisClient = redis.createClient({
-  socket: {
-    host: '127.0.0.1',
-    port: 6379
-  }
-});
-
-redisClient.on('error', (err) => console.log('Redis Error:', err));
-redisClient.on('connect', () => console.log('✅ Redis (Memurai) Connected'));
-
-redisClient.connect();
+const memoryStore = new Map();
 
 function makeCode() {
   return crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -81,23 +71,23 @@ function decrypt(data) {
 const upload = multer({ dest: STORE_FOLDER });
 
 async function saveSession(code, data, ttl) {
-  await redisClient.setEx(code, ttl, JSON.stringify(data));
+  const expiresAt = Date.now() + (ttl * 1000);
+  memoryStore.set(code, { data, expiresAt });
   console.log(`✅ Saved ${code}`);
 }
 
 async function loadSession(code) {
-  const val = await redisClient.get(code);
-  if (!val) return null;
-  try {
-    return JSON.parse(val);
-  } catch(e) {
-    console.log(`❌ Parse error ${code}`);
+  const record = memoryStore.get(code);
+  if (!record) return null;
+  if (Date.now() > record.expiresAt) {
+    memoryStore.delete(code);
     return null;
   }
+  return record.data;
 }
 
 async function deleteSession(code) {
-  await redisClient.del(code);
+  memoryStore.delete(code);
   console.log(`🗑️ Deleted ${code}`);
 }
 
@@ -273,6 +263,18 @@ app.get("/session/info/:code", async (req, res) => {
     hasFile: !!session.file || (session.files && session.files.length > 0),
     receiverOnline: session.receiverOnline
   });
+});
+
+app.get("/api/ip", (req, res) => {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return res.json({ ip: iface.address });
+      }
+    }
+  }
+  res.json({ ip: 'localhost' });
 });
 
 app.get("/join/:code", (req, res) => {
