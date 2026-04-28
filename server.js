@@ -8,13 +8,14 @@ const fs = require("fs");
 const multer = require("multer");
 const redis = require("redis");
 const os = require("os");
+const { X509Certificate } = require("crypto");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-const PORT = 3002;
+const HTTPS_PORT = 3002;
 const STORE_FOLDER = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(STORE_FOLDER)) {
@@ -28,20 +29,107 @@ if (!fs.existsSync(CERT_DIR)) {
 const KEY_PATH = path.join(CERT_DIR, "server.key");
 const CERT_PATH = path.join(CERT_DIR, "server.cert");
 
+function getLocalIPv4Addresses() {
+  const addresses = [];
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        addresses.push({ name, address: iface.address });
+      }
+    }
+  }
+  return addresses;
+}
+
+function isVirtualAdapterName(name = "") {
+  const lowered = name.toLowerCase();
+  const virtualHints = [
+    "virtual",
+    "vmware",
+    "vbox",
+    "hyper-v",
+    "vethernet",
+    "docker",
+    "wsl",
+    "loopback",
+    "hamachi",
+    "tailscale",
+    "zero tier",
+    "zerotier"
+  ];
+  return virtualHints.some((hint) => lowered.includes(hint));
+}
+
+function pickBestLanIp() {
+  const all = getLocalIPv4Addresses();
+  if (all.length === 0) return null;
+  const scored = all
+    .map((item) => {
+      let score = 0;
+      if (!isVirtualAdapterName(item.name)) score += 20;
+      if (item.address.startsWith("10.")) score += 12;
+      if (item.address.startsWith("192.168.")) score += 8;
+      if (item.address.startsWith("172.")) score += 4;
+      if (item.address.startsWith("192.168.56.")) score -= 25; // VMware host-only default
+      if (item.address.startsWith("169.254.")) score -= 30; // link-local, not routable
+      return { ...item, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return scored[0].address;
+}
+
+function certHasExpectedSans(certPem) {
+  try {
+    const cert = new X509Certificate(certPem);
+    const san = cert.subjectAltName || "";
+    if (!san.includes("DNS:localhost")) return false;
+    const localIps = getLocalIPv4Addresses().map((item) => item.address);
+    if (localIps.length === 0) return true;
+    return localIps.some((ip) => san.includes(`IP Address:${ip}`));
+  } catch (_err) {
+    return false;
+  }
+}
+
+function generateAndStartServer() {
+  console.log("Generating self-signed certificates with LAN IP SANs...");
+  const attrs = [{ name: "commonName", value: "localhost" }];
+  const localIps = getLocalIPv4Addresses().map((item) => item.address);
+  const altNames = [
+    { type: 2, value: "localhost" },
+    { type: 7, ip: "127.0.0.1" },
+    ...localIps.map((ip) => ({ type: 7, ip }))
+  ];
+
+  selfsigned
+    .generate(attrs, {
+      days: 365,
+      keySize: 2048,
+      algorithm: "sha256",
+      extensions: [{ name: "subjectAltName", altNames }]
+    })
+    .then((pems) => {
+      fs.writeFileSync(KEY_PATH, pems.private, "utf8");
+      fs.writeFileSync(CERT_PATH, pems.cert, "utf8");
+      startServer(pems.private, pems.cert);
+    })
+    .catch((err) => {
+      console.error("Certificate generation error", err);
+    });
+}
+
 if (fs.existsSync(KEY_PATH) && fs.existsSync(CERT_PATH)) {
   const key = fs.readFileSync(KEY_PATH, "utf8");
   const cert = fs.readFileSync(CERT_PATH, "utf8");
-  startServer(key, cert);
+  if (certHasExpectedSans(cert)) {
+    startServer(key, cert);
+  } else {
+    console.log("Existing certificate SAN mismatch detected. Regenerating certificate...");
+    generateAndStartServer();
+  }
 } else {
-  console.log("Generating new self-signed certificates (this may take a moment)...");
-  const attrs = [{ name: 'commonName', value: 'localhost' }];
-  selfsigned.generate(attrs, { days: 365, keySize: 2048 }).then(pems => {
-    fs.writeFileSync(KEY_PATH, pems.private, "utf8");
-    fs.writeFileSync(CERT_PATH, pems.cert, "utf8");
-    startServer(pems.private, pems.cert);
-  }).catch(err => {
-    console.error("Certificate generation error", err);
-  });
+  generateAndStartServer();
 }
 
 const memoryStore = new Map();
@@ -266,15 +354,12 @@ app.get("/session/info/:code", async (req, res) => {
 });
 
 app.get("/api/ip", (req, res) => {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        return res.json({ ip: iface.address });
-      }
-    }
-  }
-  res.json({ ip: 'localhost' });
+  const allIps = getLocalIPv4Addresses();
+  const bestIp = pickBestLanIp();
+  res.json({
+    ip: bestIp || "localhost",
+    allIps: allIps.map((item) => item.address)
+  });
 });
 
 app.get("/join/:code", (req, res) => {
@@ -283,7 +368,9 @@ app.get("/join/:code", (req, res) => {
 
 function startServer(k, c) {
   const credentials = { key: k, cert: c };
-  https.createServer(credentials, app).listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Secure Server (HTTPS) running on https://localhost:${PORT}\n`);
+  
+  // HTTPS-only server
+  https.createServer(credentials, app).listen(HTTPS_PORT, '0.0.0.0', () => {
+    console.log(`\n🔒 Secure Server (HTTPS) running on https://localhost:${HTTPS_PORT}\n`);
   });
 }

@@ -4,174 +4,154 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SecureFileSync | Choose Role</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/css/theme.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #0f0c29 0%, #1a1a3e 50%, #0f0c29 100%);
-            min-height: 100vh;
+        .landing-container {
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem;
+            z-index: 10;
         }
 
-        .landing {
+        .header-section {
             text-align: center;
-            padding: 40px;
+            margin-bottom: 4rem;
         }
 
-        .logo {
-            margin-bottom: 50px;
+        .header-section h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
         }
 
-        .logo h1 {
+        .header-section h1 i {
             font-size: 3rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
+            color: var(--primary);
         }
 
-        .logo p {
-            color: #a0a0c0;
-            font-size: 1rem;
+        .header-section p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
         }
 
         .badge {
-            display: inline-block;
-            background: rgba(102, 126, 234, 0.2);
-            padding: 6px 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(99, 102, 241, 0.15);
+            padding: 8px 16px;
             border-radius: 30px;
-            font-size: 0.75rem;
-            color: #818cf8;
-            margin-top: 15px;
+            font-size: 0.85rem;
+            color: var(--primary);
+            margin-top: 1.5rem;
+            border: 1px solid rgba(99, 102, 241, 0.3);
         }
 
-        .role-cards {
-            display: flex;
-            gap: 40px;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-top: 40px;
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            width: 100%;
+            max-width: 800px;
         }
 
         .role-card {
-            background: rgba(20, 20, 45, 0.7);
-            backdrop-filter: blur(12px);
-            border-radius: 28px;
-            border: 1px solid rgba(102, 126, 234, 0.3);
-            padding: 40px 50px;
-            width: 280px;
-            cursor: pointer;
-            transition: all 0.3s;
+            padding: 3rem 2rem;
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
         }
-
+        
         .role-card:hover {
-            transform: translateY(-8px);
-            border-color: rgba(102, 126, 234, 0.8);
-            box-shadow: 0 25px 40px rgba(0, 0, 0, 0.4);
+            transform: translateY(-10px);
         }
 
-        .role-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
+        .icon-wrapper {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
         }
 
-        .role-card h2 {
-            color: #fff;
-            margin-bottom: 10px;
-            font-size: 1.8rem;
+        .sender-icon {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.05));
+            color: var(--primary);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .receiver-icon {
+            background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(236, 72, 153, 0.05));
+            color: var(--accent);
+            border: 1px solid rgba(236, 72, 153, 0.3);
         }
 
         .role-card p {
-            color: #a0a0c0;
-            font-size: 0.85rem;
-            margin-bottom: 20px;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+            flex-grow: 1;
         }
 
-        .role-btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            padding: 10px 25px;
-            border-radius: 30px;
-            color: white;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .role-btn:hover {
-            transform: scale(1.05);
-        }
-
-        .sender-icon { color: #667eea; }
-        .receiver-icon { color: #764ba2; }
-
-        @media (max-width: 700px) {
-            .role-cards {
-                gap: 20px;
+        @media (max-width: 768px) {
+            .header-section h1 {
+                font-size: 2.5rem;
             }
-            .role-card {
-                padding: 30px 35px;
-                width: 240px;
-            }
-            .logo h1 {
-                font-size: 2rem;
+            .cards-grid {
+                grid-template-columns: 1fr;
+                max-width: 400px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="landing">
-        <div class="logo">
-            <h1><i class="fas fa-shield-alt"></i> SecureFileSync</h1>
-            <p>AES-256 Encrypted File Transfer System</p>
-            <div class="badge">
-                <i class="fas fa-lock"></i> End-to-End Encryption | Auto-expiring Sessions
-            </div>
-        </div>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
 
-        <div class="role-cards">
-            <!-- Sender Card -->
-            <div class="role-card" onclick="goToSender()">
-                <div class="role-icon sender-icon">
+    <div class="landing-container">
+        <header class="header-section">
+            <h1><i class="fas fa-shield-alt"></i> <span class="text-gradient">SecureFileSync</span></h1>
+            <p>AES-256 Encrypted Real-Time File Transfer</p>
+            <div class="badge">
+                <i class="fas fa-lock"></i> End-to-End Encryption • Auto-expiring Sessions
+            </div>
+        </header>
+
+        <div class="cards-grid">
+            <a href="/sender.html" class="glass-panel role-card">
+                <div class="icon-wrapper sender-icon">
                     <i class="fas fa-paper-plane"></i>
                 </div>
                 <h2>Sender</h2>
-                <p>Create a session, upload files, send encrypted data to receiver</p>
-                <button class="role-btn">Continue as Sender →</button>
-            </div>
+                <p>Create a secure session, upload files or drop text, and share the encryption key automatically.</p>
+                <div class="btn-primary">Start Sending <i class="fas fa-arrow-right"></i></div>
+            </a>
 
-            <!-- Receiver Card -->
-            <div class="role-card" onclick="goToReceiver()">
-                <div class="role-icon receiver-icon">
+            <a href="/receiver.html" class="glass-panel role-card">
+                <div class="icon-wrapper receiver-icon">
                     <i class="fas fa-download"></i>
                 </div>
                 <h2>Receiver</h2>
-                <p>Join a session, receive text messages, download decrypted files</p>
-                <button class="role-btn">Continue as Receiver →</button>
-            </div>
+                <p>Join a live session, decrypt incoming files directly in the browser, and download safely.</p>
+                <button class="btn-primary" style="background: linear-gradient(135deg, var(--accent) 0%, #be185d 100%);">Join Session <i class="fas fa-arrow-right"></i></button>
+            </a>
         </div>
     </div>
-
-    <script>
-        function goToSender() {
-            window.location.href = "/sender.html";
-        }
-
-        function goToReceiver() {
-            window.location.href = "/receiver.html";
-        }
-    </script>
 </body>
 </html>

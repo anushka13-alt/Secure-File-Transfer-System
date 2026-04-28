@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Color Changer</title>
+</head>
+<body style="text-align:center; margin-top:60px;">
+<h2>Background Color Changer</h2>
+<h4>Riya Gupta,45</h4>
+<button onclick="start()">START</button>
+<button onclick="pause()">PAUSE</button>
+<button onclick="reset()">RESET</button>
+<script>
+let colors = ["red","green","blue","yellow","pink","orange"];
+let i = 0;
+let timer;
+function start(){
+    if(!timer){
+        timer = setInterval(function(){
+            document.body.style.backgroundColor = colors[i];
+            i = (i+1) % colors.length;
+        },1000);
+    }
+}
+function pause(){
+    clearInterval(timer);
+    timer = null;
+}
+function reset(){
+    clearInterval(timer);
+    timer = null;
+    document.body.style.backgroundColor = "white";
+}
+</script>
+</body>
+</html>
+
+
+
+
