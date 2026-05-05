@@ -1,24 +1,31 @@
 {
   "name": "secure-data-transfer",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "Secure File Transfer System with AES-256 Encryption, Password Protection, One-Time Downloads, and WebRTC Video/Audio Calls",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "keywords": [
+    "secure-file-transfer",
+    "aes-256",
+    "encryption",
+    "webrtc",
+    "video-call",
+    "one-time-download",
+    "password-protection"
+  ],
+  "author": "Team SECURESYNC",
+  "license": "MIT",
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.6",
-    "crypto": "^1.0.1",
-    "express": "^5.2.1",
-    "fs": "^0.0.1-security",
-    "multer": "^2.1.1",
-    "path": "^0.12.7",
-    "redis": "^5.12.1"
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }

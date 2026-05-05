@@ -6,6 +6,8 @@ const fs = require("fs");
 const multer = require("multer");
 const os = require("os");
 const bcrypt = require("bcrypt");
+const http = require("http");
+const socketIo = require("socket.io");
 
 const app = express();
 app.use(cors());
@@ -63,6 +65,89 @@ async function loadSession(code) {
 async function deleteSession(code) {
   memoryStore.delete(code);
 }
+
+// Create HTTP server for Socket.IO
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// Store active call rooms
+const callRooms = new Map();
+
+io.on('connection', (socket) => {
+  console.log(`🔌 New WebSocket connection: ${socket.id}`);
+
+  // Join a call room
+  socket.on('join-call', ({ sessionId, userId }) => {
+    socket.join(`call-${sessionId}`);
+    socket.callRoom = `call-${sessionId}`;
+    
+    const room = callRooms.get(sessionId) || { users: [] };
+    if (!room.users.includes(socket.id)) {
+      room.users.push(socket.id);
+    }
+    callRooms.set(sessionId, room);
+    
+    // Notify others in room
+    socket.to(`call-${sessionId}`).emit('user-joined', { userId: socket.id });
+    
+    // If there are other users, send their info to the new user
+    const otherUsers = room.users.filter(id => id !== socket.id);
+    if (otherUsers.length > 0) {
+      socket.emit('existing-users', { users: otherUsers });
+    }
+  });
+
+  // Handle WebRTC signaling
+  socket.on('offer', ({ sessionId, offer, targetId }) => {
+    socket.to(`call-${sessionId}`).emit('offer', { offer, fromId: socket.id, targetId });
+  });
+
+  socket.on('answer', ({ sessionId, answer, targetId }) => {
+    socket.to(`call-${sessionId}`).emit('answer', { answer, fromId: socket.id, targetId });
+  });
+
+  socket.on('ice-candidate', ({ sessionId, candidate, targetId }) => {
+    socket.to(`call-${sessionId}`).emit('ice-candidate', { candidate, fromId: socket.id, targetId });
+  });
+
+  // Toggle microphone
+  socket.on('toggle-mic', ({ sessionId, enabled }) => {
+    socket.to(`call-${sessionId}`).emit('mic-toggled', { userId: socket.id, enabled });
+  });
+
+  // Toggle camera
+  socket.on('toggle-camera', ({ sessionId, enabled }) => {
+    socket.to(`call-${sessionId}`).emit('camera-toggled', { userId: socket.id, enabled });
+  });
+
+  // Leave call
+  socket.on('leave-call', ({ sessionId }) => {
+    socket.to(`call-${sessionId}`).emit('user-left', { userId: socket.id });
+    socket.leave(`call-${sessionId}`);
+    
+    const room = callRooms.get(sessionId);
+    if (room) {
+      room.users = room.users.filter(id => id !== socket.id);
+      if (room.users.length === 0) {
+        callRooms.delete(sessionId);
+      } else {
+        callRooms.set(sessionId, room);
+      }
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 WebSocket disconnected: ${socket.id}`);
+    if (socket.callRoom) {
+      socket.to(socket.callRoom).emit('user-left', { userId: socket.id });
+    }
+  });
+});
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 
@@ -286,7 +371,8 @@ app.get("/join/:code", (req, res) => {
   res.redirect(`/receiver.html?code=${req.params.code}`);
 });
 
-// ── Start HTTP server ──────────────────────────────────────────────────────
-app.listen(PORT, "0.0.0.0", () => {
+// ── Start server with Socket.IO ──────────────────────────────────────────────
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`WebSocket signaling server ready for WebRTC calls`);
 });

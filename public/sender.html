@@ -5,66 +5,450 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SecureFileSync | Sender Panel</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/css/theme.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; position: relative; z-index: 10; }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .top-bar h1 { font-size: 2rem; display: flex; align-items: center; gap: 12px; }
+        :root {
+            --primary: #6366f1;
+            --secondary: #8b5cf6;
+            --accent: #ec489a;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --text-main: #ffffff;
+            --text-muted: #a0a0c0;
+            --glass-bg: rgba(20, 20, 45, 0.7);
+            --glass-border: rgba(102, 126, 234, 0.3);
+        }
         
-        .card-head { padding: 25px 35px; border-bottom: 1px solid var(--glass-border); }
-        .card-head h2 { font-size: 1.4rem; display: flex; align-items: center; gap: 10px; color: var(--text-main); }
-        .card-head h2 i { color: var(--primary); }
-        .card-body { padding: 35px; }
-
-        .input-group { margin-bottom: 25px; }
-        .input-group label { display: block; margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem; font-weight: 500;}
-
-        .btn-block { width: 100%; justify-content: center; margin-top: 10px; }
-        .btn-danger { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); border:none; }
-        .btn-danger:hover { box-shadow: 0 8px 25px rgba(239, 68, 68, 0.6); }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
         
-        .session-box { background: rgba(0,0,0,0.4); border-radius: 16px; padding: 20px; text-align: center; margin: 20px 0; font-family: monospace; font-size: 1.2rem; border: 1px solid var(--glass-border); }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #1a1a3e 50%, #0f0c29 100%);
+            min-height: 100vh;
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
         
-        .share-box { margin: 20px 0; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px; border: 1px dashed rgba(99, 102, 241, 0.4); }
-        .share-box label { display: block; margin-bottom: 12px; color: var(--text-muted); font-size: 0.9rem; }
-        .link-row { display: flex; gap: 12px; align-items: center; }
-        .link-row input { flex: 1; padding: 14px; font-family: monospace; border-radius: 12px; }
-        .link-hint { display: block; margin-top: 12px; font-size: 0.8rem; color: var(--text-muted); }
+        .blob {
+            position: fixed;
+            width: 600px;
+            height: 600px;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.3;
+            z-index: 0;
+            pointer-events: none;
+        }
         
-        .timer-card { background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1)); border-radius: 16px; padding: 25px; text-align: center; margin: 20px 0; border: 1px solid rgba(99, 102, 241, 0.2); }
-        .timer-digits { font-size: 3rem; font-weight: 800; font-family: monospace; color: #fff; letter-spacing: 2px; }
-        .timer-label { font-size: 0.85rem; color: var(--text-muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        .blob-1 {
+            background: var(--primary);
+            top: -200px;
+            right: -200px;
+        }
+        
+        .blob-2 {
+            background: var(--accent);
+            bottom: -200px;
+            left: -200px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+        
+        .top-bar h1 {
+            font-size: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .text-gradient {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-radius: 28px;
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        
+        .glass-panel:hover {
+            border-color: rgba(102, 126, 234, 0.5);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-head {
+            padding: 25px 35px;
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        .card-head h2 {
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-main);
+        }
+        
+        .card-head h2 i {
+            color: var(--primary);
+        }
+        
+        .card-body {
+            padding: 35px;
+        }
+        
+        .input-group {
+            margin-bottom: 25px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        input, textarea, select {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 14px 20px;
+            color: var(--text-main);
+            font-family: inherit;
+            width: 100%;
+            outline: none;
+            transition: all 0.3s;
+        }
+        
+        input:focus, textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-muted);
+            border: 1px solid var(--glass-border);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, var(--danger), #b91c1c);
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn-call {
+            background: linear-gradient(135deg, #ec489a, #8b5cf6);
+            box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+        }
+        
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+        
+        .session-box {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 1.2rem;
+            border: 1px solid var(--glass-border);
+        }
+        
+        .share-box {
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 16px;
+            border: 1px dashed rgba(99, 102, 241, 0.4);
+        }
+        
+        .link-row {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .link-row input {
+            flex: 1;
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+        
+        .timer-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+            margin: 20px 0;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        
+        .timer-digits {
+            font-size: 3rem;
+            font-weight: 800;
+            font-family: monospace;
+            color: #fff;
+            letter-spacing: 2px;
+        }
+        
+        .timer-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
         .timer-danger { color: var(--danger); animation: pulse 1s infinite; }
-        .timer-warning { color: #f59e0b; }
+        .timer-warning { color: var(--warning); }
         
-        .flex-between { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: rgba(0,0,0,0.2); border-radius: 12px; }
-        .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-        .badge-active { background: rgba(16, 185, 129, 0.2); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.3); }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
         
-        .alert-box { padding: 16px 20px; border-radius: 12px; margin: 20px 0; font-size: 0.95rem; display: flex; align-items: center; gap: 12px; font-weight: 500; }
-        .alert-green { background: rgba(16, 185, 129, 0.15); border-left: 4px solid var(--success); color: var(--success); }
-        .alert-red { background: rgba(239, 68, 68, 0.15); border-left: 4px solid var(--danger); color: var(--danger); }
-        .alert-blue { background: rgba(99, 102, 241, 0.15); border-left: 4px solid var(--primary); color: #818cf8; }
-        .alert-yellow { background: rgba(245, 158, 11, 0.15); border-left: 4px solid #f59e0b; color: #fbbf24; }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+        }
         
-        hr { border: none; height: 1px; background: var(--glass-border); margin: 30px 0; }
-        h3 { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; font-size: 1.2rem; }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .badge-active {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        
+        .alert-box {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+        
+        .alert-green {
+            background: rgba(16, 185, 129, 0.15);
+            border-left: 4px solid var(--success);
+            color: var(--success);
+        }
+        
+        .alert-red {
+            background: rgba(239, 68, 68, 0.15);
+            border-left: 4px solid var(--danger);
+            color: var(--danger);
+        }
+        
+        .alert-blue {
+            background: rgba(99, 102, 241, 0.15);
+            border-left: 4px solid var(--primary);
+            color: #818cf8;
+        }
+        
+        .alert-yellow {
+            background: rgba(245, 158, 11, 0.15);
+            border-left: 4px solid var(--warning);
+            color: #fbbf24;
+        }
+        
+        hr {
+            border: none;
+            height: 1px;
+            background: var(--glass-border);
+            margin: 30px 0;
+        }
+        
+        h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+        
         h3 i { color: var(--primary); }
-
-        .progress-wrapper { margin: 25px 0; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 16px; border: 1px solid var(--glass-border); }
-        .progress-bar-bg { background: rgba(0,0,0,0.5); border-radius: 30px; height: 10px; overflow: hidden; margin-bottom: 12px; }
-        .progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); border-radius: 30px; transition: width 0.3s; box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); }
-        .progress-stats { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); font-family: monospace; }
         
-        .file-drop-zone { border: 2px dashed rgba(99, 102, 241, 0.5); border-radius: 16px; padding: 40px; text-align: center; cursor: pointer; transition: all 0.3s; background: rgba(0,0,0,0.1); margin-bottom: 20px;}
-        .file-drop-zone:hover { background: rgba(99, 102, 241, 0.05); border-color: var(--primary); }
-        .file-drop-zone i { font-size: 3rem; color: var(--primary); margin-bottom: 15px; opacity: 0.8; }
-        .file-drop-zone p { color: var(--text-muted); font-size: 1rem;}
+        .progress-wrapper {
+            margin: 25px 0;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 16px;
+            border: 1px solid var(--glass-border);
+        }
+        
+        .progress-bar-bg {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 30px;
+            height: 10px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        
+        .progress-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            border-radius: 30px;
+            transition: width 0.3s;
+        }
+        
+        .progress-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+        
+        .file-drop-zone {
+            border: 2px dashed rgba(99, 102, 241, 0.5);
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        
+        .file-drop-zone:hover {
+            background: rgba(99, 102, 241, 0.05);
+            border-color: var(--primary);
+        }
+        
+        .file-drop-zone i {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 15px;
+            opacity: 0.8;
+        }
+        
         #fileInput { display: none; }
         
-        .password-input-group { background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0.05)); border-radius: 16px; padding: 15px; margin-bottom: 20px; border: 1px solid rgba(139, 92, 246, 0.3); }
-        .password-input-group label { color: var(--primary); }
+        .password-input-group {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(99, 102, 241, 0.05));
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        
+        .toast {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 12px 20px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+            animation: slideIn 0.3s ease;
+            border-left: 4px solid var(--primary);
+        }
+        
+        .toast.success { border-left-color: var(--success); }
+        .toast.error { border-left-color: var(--danger); }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes fadeOut {
+            to { opacity: 0; transform: translateX(100%); }
+        }
     </style>
 </head>
 <body>
@@ -78,43 +462,40 @@
             <button class="btn-secondary" onclick="goHome()"><i class="fas fa-arrow-left"></i> Home</button>
         </div>
         
-        <div class="glass-panel card">
-            <div class="card-head"><h2><i class="fas fa-plus-circle"></i> Create Secure Session</h2></div>
+        <div class="glass-panel">
+            <div class="card-head">
+                <h2><i class="fas fa-plus-circle"></i> Create Secure Session</h2>
+            </div>
             <div class="card-body">
                 <div class="input-group">
                     <label>Session Timeout (seconds)</label>
-                    <input type="number" id="timeoutBox" value="300" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 14px 20px; color: var(--text-main); font-family: var(--font-body); width: 100%; outline: none;">
+                    <input type="number" id="timeoutBox" value="300">
                 </div>
                 
-                <!-- Password Protection Option -->
                 <div class="password-input-group">
                     <label><i class="fas fa-lock"></i> Session Password (Optional)</label>
-                    <input type="password" id="sessionPassword" placeholder="Leave empty for no password" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 14px 20px; color: var(--text-main); width: 100%; outline: none;">
+                    <input type="password" id="sessionPassword" placeholder="Leave empty for no password">
                     <small style="display: block; margin-top: 8px; color: var(--text-muted);"><i class="fas fa-info-circle"></i> Receiver will need this password to join the session</small>
                 </div>
                 
-                <button class="btn-primary btn-block" onclick="createSession()"><i class="fas fa-shield-alt"></i> Create Session</button>
+                <button class="btn btn-primary btn-block" onclick="createSession()"><i class="fas fa-shield-alt"></i> Create Session</button>
                 
-                <div id="sessionArea" style="display:none; margin-top: 30px;">
-                    <div class="session-box"><i class="fas fa-key"></i> Code: <span id="codeDisplay" style="color: var(--primary); font-weight: bold; margin-left:10px;">---</span></div>
+                <div id="sessionArea" style="display: none; margin-top: 30px;">
+                    <div class="session-box">
+                        <i class="fas fa-key"></i> Code: <span id="codeDisplay" style="color: var(--primary); font-weight: bold;">---</span>
+                    </div>
                     
                     <div class="share-box">
                         <label><i class="fas fa-link"></i> Shareable Join Link</label>
                         <div class="link-row">
                             <input type="text" id="shareLink" readonly placeholder="Link will appear after session creation">
-                            <button class="btn-primary" style="padding: 12px 20px; border-radius: 12px;" onclick="copyShareLink()"><i class="far fa-copy"></i> Copy</button>
+                            <button class="btn btn-primary" onclick="copyShareLink()" style="padding: 12px 20px;"><i class="far fa-copy"></i> Copy</button>
                         </div>
-                        <small class="link-hint"><i class="fas fa-info-circle"></i> Send this link to receiver - they click and join instantly!</small>
+                        <small class="link-hint" style="display: block; margin-top: 12px; font-size: 0.8rem; color: var(--text-muted);"><i class="fas fa-info-circle"></i> Send this link to receiver - they click and join instantly!</small>
                     </div>
                     
-                    <div id="passwordWarning" style="display:none; background: rgba(245, 158, 11, 0.15); border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 12px; margin-bottom: 15px;">
+                    <div id="passwordWarning" style="display: none; background: rgba(245, 158, 11, 0.15); border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 12px; margin-bottom: 15px;">
                         <i class="fas fa-key"></i> <strong>Password Protected Session</strong> - Share the password separately with receiver!
-                    </div>
-                    
-                    <div id="qrBox" style="display:none; text-align: center; margin-bottom: 20px; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 16px; border: 1px dashed rgba(99, 102, 241, 0.4);">
-                        <label style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px; display: block;"><i class="fas fa-qrcode"></i> Mobile Pairing Core</label>
-                        <div id="qrcode" style="display: inline-block; padding: 10px; background: white; border-radius: 10px;"></div>
-                        <small style="display: block; margin-top: 10px; font-size: 0.8rem; color: var(--text-muted);">Scan securely to join from your mobile device via local network!</small>
                     </div>
                     
                     <div class="timer-card">
@@ -123,14 +504,19 @@
                     </div>
                     
                     <div class="flex-between">
-                        <span style="color: var(--text-muted); font-weight:500;">Connection Status:</span>
+                        <span>Connection Status:</span>
                         <span class="status-badge badge-active" id="statusBadge"><i class="fas fa-spinner fa-spin"></i> Waiting</span>
                     </div>
+                    
+                    <!-- Video Call Button -->
+                    <button class="btn btn-primary btn-block btn-call" onclick="startVideoCall()" style="margin-top: 10px;">
+                        <i class="fas fa-video"></i> Start Secure Video Call
+                    </button>
                     
                     <hr>
                     <h3><i class="fas fa-comment-dots"></i> Send Encrypted Text</h3>
                     <textarea id="textMsg" rows="3" placeholder="Type confidential message here..."></textarea>
-                    <button class="btn-primary btn-block" onclick="sendText()"><i class="fas fa-paper-plane"></i> Send Text</button>
+                    <button class="btn btn-primary btn-block" onclick="sendText()"><i class="fas fa-paper-plane"></i> Send Text</button>
                     
                     <hr>
                     <h3><i class="fas fa-file-shield"></i> Send Encrypted File</h3>
@@ -139,9 +525,9 @@
                         <p id="fileDropText">Click to browse or drag files here (One-time download links)</p>
                     </div>
                     <input type="file" id="fileInput" multiple onchange="updateFileName()">
-                    <button class="btn-primary btn-block" onclick="uploadFile()"><i class="fas fa-lock"></i> Upload & Encrypt</button>
+                    <button class="btn btn-primary btn-block" onclick="uploadFile()"><i class="fas fa-lock"></i> Upload & Encrypt</button>
                     
-                    <div class="progress-wrapper" id="progressDiv" style="display:none;">
+                    <div class="progress-wrapper" id="progressDiv" style="display: none;">
                         <div class="progress-bar-bg"><div class="progress-fill" id="progressFill"></div></div>
                         <div class="progress-stats"><span id="progressPct">0%</span><span id="progressBytes">0 / 0 Bytes</span></div>
                     </div>
@@ -158,24 +544,12 @@
         let pollInterval = null;
         let sessionPassword = null;
         
-        function waitForQRCode(callback, retries = 20) {
-            if (typeof QRCode !== 'undefined') {
-                callback();
-                return;
-            }
-            if (retries <= 0) {
-                console.error('QRCode library failed to load');
-                return;
-            }
-            setTimeout(() => waitForQRCode(callback, retries - 1), 250);
-        }
-        
-        function showToast(msg, type='success'){
+        function showToast(msg, type = 'success') {
             let container = document.getElementById('toastContainer');
-            let toast=document.createElement('div');
-            toast.className=`toast ${type}`;
-            let icon = type==='success' ? 'fa-check-circle' : (type==='error'?'fa-exclamation-circle':'fa-info-circle');
-            toast.innerHTML=`<i class="fas ${icon}"></i> <span>${msg}</span>`;
+            let toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            let icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
+            toast.innerHTML = `<i class="fas ${icon}"></i> <span>${msg}</span>`;
             container.appendChild(toast);
             setTimeout(() => {
                 toast.style.animation = 'fadeOut 0.4s forwards';
@@ -183,310 +557,261 @@
             }, 4000);
         }
         
-        function showAlert(msg,type){
-            let box=document.getElementById('alertBox');
-            let cls=type==='success'?'alert-green':(type==='error'?'alert-red':'alert-blue');
-            let icon = type==='success' ? 'fa-check-circle' : (type==='error'?'fa-times-circle':'fa-info-circle');
-            box.innerHTML=`<div class="alert-box ${cls}"><i class="fas ${icon}"></i> ${msg}</div>`;
-            setTimeout(()=>{if(box.innerHTML.includes(msg)) box.innerHTML='';},5000);
+        function showAlert(msg, type) {
+            let box = document.getElementById('alertBox');
+            let cls = type === 'success' ? 'alert-green' : (type === 'error' ? 'alert-red' : 'alert-blue');
+            let icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-times-circle' : 'fa-info-circle');
+            box.innerHTML = `<div class="alert-box ${cls}"><i class="fas ${icon}"></i> ${msg}</div>`;
+            setTimeout(() => { if (box.innerHTML.includes(msg)) box.innerHTML = ''; }, 5000);
         }
         
-        function goHome(){
-            if(timerInterval) clearInterval(timerInterval);
-            if(pollInterval) clearInterval(pollInterval);
-            window.location.href='/';
+        function goHome() {
+            if (timerInterval) clearInterval(timerInterval);
+            if (pollInterval) clearInterval(pollInterval);
+            window.location.href = '/';
         }
         
-        async function updateShareLink(){
-            if(sessionId){
-                let fullLink = window.location.origin + "/join/" + sessionId;
-                
-                try {
-                    let res = await fetch('/api/ip');
-                    let data = await res.json();
-                    if(data.ip) {
-                        const isHttps = window.location.protocol === 'https:';
-                        const port = window.location.port || (isHttps ? '3002' : '');
-                        const protocol = 'https';
-                        fullLink = `${protocol}://${data.ip}${port ? `:${port}` : ''}/join/${sessionId}`;
-                    } else if (window.location.hostname && window.location.hostname !== 'localhost') {
-                        const isHttps = window.location.protocol === 'https:';
-                        const port = window.location.port || (isHttps ? '3002' : '');
-                        fullLink = `https://${window.location.hostname}${port ? `:${port}` : ''}/join/${sessionId}`;
-                    }
-                } catch(e) {
-                    console.error('IP fetch error:', e);
-                }
-                
-                document.getElementById('shareLink').value = fullLink;
-                
-                let qrBox = document.getElementById('qrBox');
-                qrBox.style.display = 'block';
-                let qrContainer = document.getElementById('qrcode');
-                qrContainer.innerHTML = '';
-                
-                waitForQRCode(() => {
-                    try {
-                        qrContainer.innerHTML = '';
-                        new QRCode(qrContainer, {
-                            text: fullLink,
-                            width: 150,
-                            height: 150,
-                            colorDark: "#000000",
-                            colorLight: "#ffffff",
-                            correctLevel: QRCode.CorrectLevel.H
-                        });
-                    } catch(e) {
-                        console.error('QR Code error:', e);
-                        showAlert('QR code unavailable. Use the link above.', 'error');
-                    }
-                });
+        function startVideoCall() {
+            if (sessionId) {
+                window.open(`/call.html?sessionId=${sessionId}`, '_blank', 'width=1200,height=800');
+            } else {
+                showAlert('Create a session first', 'error');
             }
         }
         
-        function copyShareLink(){
+        function copyShareLink() {
             let linkInput = document.getElementById('shareLink');
             linkInput.select();
             linkInput.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(linkInput.value);
             showToast('Join link copied to clipboard! Share securely.');
         }
-
+        
         function updateFileName() {
             let files = document.getElementById('fileInput').files;
             if (files && files.length > 0) {
-                if(files.length === 1) {
-                    document.getElementById('fileDropText').innerHTML = `<strong>${files[0].name}</strong> (${(files[0].size/1024).toFixed(1)} KB)<br>Ready to encrypt (One-time download)`;
+                if (files.length === 1) {
+                    document.getElementById('fileDropText').innerHTML = `<strong>${files[0].name}</strong> (${(files[0].size / 1024).toFixed(1)} KB)<br>Ready to encrypt (One-time download)`;
                 } else {
                     let totalSize = Array.from(files).reduce((acc, f) => acc + f.size, 0);
-                    document.getElementById('fileDropText').innerHTML = `<strong>${files.length} files selected</strong> (${(totalSize/1024).toFixed(1)} KB)<br>Ready to encrypt (One-time download)`;
+                    document.getElementById('fileDropText').innerHTML = `<strong>${files.length} files selected</strong> (${(totalSize / 1024).toFixed(1)} KB)<br>Ready to encrypt (One-time download)`;
                 }
             }
         }
         
-        async function createSession(){
-            let t=document.getElementById('timeoutBox').value;
+        async function createSession() {
+            let t = document.getElementById('timeoutBox').value;
             let password = document.getElementById('sessionPassword').value;
             sessionPassword = password || null;
             
-            try{
-                let res=await fetch('/session/create',{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({timeout:t?parseInt(t):300, password: sessionPassword})
+            try {
+                let res = await fetch('/session/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ timeout: t ? parseInt(t) : 300, password: sessionPassword })
                 });
-                let data=await res.json();
-                if(data.sessionKey){
-                    sessionId=data.sessionKey;
-                    document.getElementById('codeDisplay').innerText=sessionId;
-                    document.getElementById('sessionArea').style.display='block';
-                    window.scrollTo({ top: document.getElementById('sessionArea').offsetTop, behavior: 'smooth' });
-                    updateShareLink();
+                let data = await res.json();
+                if (data.sessionKey) {
+                    sessionId = data.sessionKey;
+                    document.getElementById('codeDisplay').innerText = sessionId;
+                    document.getElementById('sessionArea').style.display = 'block';
+                    let fullLink = window.location.origin + "/join/" + sessionId;
+                    document.getElementById('shareLink').value = fullLink;
                     
-                    if(sessionPassword) {
+                    if (sessionPassword) {
                         document.getElementById('passwordWarning').style.display = 'block';
-                        showToast(`Password protected session created! Share password: "${sessionPassword}"`, 'success');
+                        showToast(`Password protected session created! Share password: "${sessionPassword}"`, 'info');
                     } else {
-                        showToast('Session successfully created!','success');
+                        showToast('Session successfully created!', 'success');
                     }
                     
-                    startTimer(data.timeout||300);
+                    startTimer(data.timeout || 300);
                     startPolling();
                 }
-            }catch(e){showAlert('Creation failed. Ensure backend is running.','error');}
+            } catch (e) {
+                showAlert('Creation failed. Ensure backend is running.', 'error');
+            }
         }
         
-        function startTimer(sec){
-            if(timerInterval) clearInterval(timerInterval);
-            let left=sec;
+        function startTimer(sec) {
+            if (timerInterval) clearInterval(timerInterval);
+            let left = sec;
             updateTimerDisplay(left);
-            timerInterval=setInterval(async()=>{
+            timerInterval = setInterval(async () => {
                 left--;
-                if(left<=0){
+                if (left <= 0) {
                     clearInterval(timerInterval);
-                    document.getElementById('timerShow').innerHTML='00:00';
-                    showAlert('Session expired naturally.','error');
-                }else{
+                    document.getElementById('timerShow').innerHTML = '00:00';
+                    showAlert('Session expired naturally.', 'error');
+                } else {
                     updateTimerDisplay(left);
                 }
-                if(sessionId){
-                    try{
-                        let res=await fetch(`/session/info/${sessionId}`);
-                        let data=await res.json();
-                        if(data.exists&&data.remainingTime){
-                            left=Math.floor(data.remainingTime);
+                if (sessionId) {
+                    try {
+                        let res = await fetch(`/session/info/${sessionId}`);
+                        let data = await res.json();
+                        if (data.exists && data.remainingTime) {
+                            left = Math.floor(data.remainingTime);
                             updateTimerDisplay(left);
                         }
-                    }catch(e){}
+                    } catch (e) { }
                 }
-            },1000);
+            }, 1000);
         }
         
-        function updateTimerDisplay(s){
-            if(s<0) s=0;
-            let m=Math.floor(s/60),sec=s%60;
-            document.getElementById('timerShow').innerHTML=`${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
-            let el=document.getElementById('timerShow');
-            if(s<10){el.classList.add('timer-danger');}
-            else if(s<30){el.classList.add('timer-warning'); el.classList.remove('timer-danger');}
-            else{el.classList.remove('timer-danger','timer-warning');}
+        function updateTimerDisplay(s) {
+            if (s < 0) s = 0;
+            let m = Math.floor(s / 60), sec = s % 60;
+            document.getElementById('timerShow').innerHTML = `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            let el = document.getElementById('timerShow');
+            if (s < 10) { el.classList.add('timer-danger'); }
+            else if (s < 30) { el.classList.add('timer-warning'); el.classList.remove('timer-danger'); }
+            else { el.classList.remove('timer-danger', 'timer-warning'); }
         }
         
-        async function startPolling(){
-            if(pollInterval) clearInterval(pollInterval);
+        async function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
             
-            let checkSession=async()=>{
-                if(!sessionId) return;
-                try{
-                    let res=await fetch(`/session/info/${sessionId}`);
-                    let data=await res.json();
+            let checkSession = async () => {
+                if (!sessionId) return;
+                try {
+                    let res = await fetch(`/session/info/${sessionId}`);
+                    let data = await res.json();
                     
-                    if(!data.exists){
-                        showToast('Session was terminated securely. Redirecting...','error');
-                        if(pollInterval) clearInterval(pollInterval);
-                        if(timerInterval) clearInterval(timerInterval);
-                        setTimeout(()=>{
-                            window.location.href='/';
-                        },2500);
+                    if (!data.exists) {
+                        showToast('Session was terminated securely. Redirecting...', 'error');
+                        if (pollInterval) clearInterval(pollInterval);
+                        if (timerInterval) clearInterval(timerInterval);
+                        setTimeout(() => { window.location.href = '/'; }, 2500);
                         return;
                     }
                     
-                    let statusRes=await fetch(`/session/status/${sessionId}`);
-                    let status=await statusRes.json();
-                    if(status.status==='gone'){
-                        document.getElementById('statusBadge').innerHTML='<i class="fas fa-ban"></i> Ended';
-                        document.getElementById('statusBadge').style.background = 'rgba(239, 68, 68, 0.2)';
-                        document.getElementById('statusBadge').style.color = 'var(--danger)';
-                        showToast('Session was terminated by receiver!','error');
+                    let statusRes = await fetch(`/session/status/${sessionId}`);
+                    let status = await statusRes.json();
+                    if (status.status === 'gone') {
+                        document.getElementById('statusBadge').innerHTML = '<i class="fas fa-ban"></i> Ended';
+                        showToast('Session was terminated by receiver!', 'error');
                         clearInterval(pollInterval);
-                        setTimeout(()=>{
-                            window.location.href='/';
-                        },2500);
-                    }else{
+                        setTimeout(() => { window.location.href = '/'; }, 2500);
+                    } else {
                         if (status.receiverOnline) {
-                            document.getElementById('statusBadge').innerHTML='<i class="fas fa-check-circle"></i> Connected';
-                            document.getElementById('statusBadge').style.background = 'rgba(16, 185, 129, 0.2)';
-                            document.getElementById('statusBadge').style.color = 'var(--success)';
+                            document.getElementById('statusBadge').innerHTML = '<i class="fas fa-check-circle"></i> Connected';
                         } else {
-                            document.getElementById('statusBadge').innerHTML='<i class="fas fa-spinner fa-spin"></i> Waiting';
+                            document.getElementById('statusBadge').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting';
                         }
                     }
-                }catch(e){}
+                } catch (e) { }
             };
             
             checkSession();
-            pollInterval=setInterval(checkSession,2000);
+            pollInterval = setInterval(checkSession, 2000);
         }
         
-        async function sendText(){
-            let msg=document.getElementById('textMsg').value;
-            if(!msg){showAlert('Please type a message first.','error');return;}
-            if(!sessionId){showAlert('Create a session first.','error');return;}
-            try{
-                let res=await fetch(`/session/send/${sessionId}`,{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({message:msg})
+        async function sendText() {
+            let msg = document.getElementById('textMsg').value;
+            if (!msg) { showAlert('Please type a message first.', 'error'); return; }
+            if (!sessionId) { showAlert('Create a session first.', 'error'); return; }
+            try {
+                let res = await fetch(`/session/send/${sessionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
                 });
-                let data=await res.json();
-                if(data.msg==='text message sent' || data.msg.includes('sent')){
-                    showAlert('Text encrypted and sent!','success');
-                    document.getElementById('textMsg').value='';
+                let data = await res.json();
+                if (data.msg === 'text message sent' || data.msg.includes('sent')) {
+                    showAlert('Text encrypted and sent!', 'success');
+                    document.getElementById('textMsg').value = '';
                     showToast('📨 Message sent securely');
-                }else{
-                    showAlert(data.msg||'Failed','error');
+                } else {
+                    showAlert(data.msg || 'Failed', 'error');
                 }
-            }catch(e){showAlert('Error sending text.','error');}
+            } catch (e) { showAlert('Error sending text.', 'error'); }
         }
-
+        
         function formatBytes(bytes) {
-            if(bytes < 1024) return bytes + " Bytes";
-            else if(bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+            if (bytes < 1024) return bytes + " Bytes";
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
             else return (bytes / 1048576).toFixed(2) + " MB";
         }
         
-        async function uploadFile(){
-            let files=document.getElementById('fileInput').files;
-            if(!files || files.length === 0){
+        async function uploadFile() {
+            let files = document.getElementById('fileInput').files;
+            if (!files || files.length === 0) {
                 document.getElementById('fileInput').click();
                 return;
             }
-            if(!sessionId){showAlert('Create a session first.','error');return;}
-            let fd=new FormData();
+            if (!sessionId) { showAlert('Create a session first.', 'error'); return; }
+            let fd = new FormData();
             let totalSize = 0;
-            for(let i=0; i<files.length; i++) {
+            for (let i = 0; i < files.length; i++) {
                 fd.append('files', files[i]);
                 totalSize += files[i].size;
             }
             
-            let progDiv=document.getElementById('progressDiv');
-            progDiv.style.display='block';
-            document.getElementById('progressFill').style.width='0%';
-            document.getElementById('progressPct').innerText='0%';
-            document.getElementById('progressBytes').innerText=`0 / ${formatBytes(totalSize)}`;
+            let progDiv = document.getElementById('progressDiv');
+            progDiv.style.display = 'block';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressPct').innerText = '0%';
+            document.getElementById('progressBytes').innerText = `0 / ${formatBytes(totalSize)}`;
             
-            try{
+            try {
                 let p = 0;
                 let intv = setInterval(() => {
                     if (p < 85) p += Math.random() * 15;
                     document.getElementById('progressFill').style.width = p + '%';
                     document.getElementById('progressPct').innerText = Math.floor(p) + '%';
-                    document.getElementById('progressBytes').innerText = `${formatBytes(totalSize * (p/100))} / ${formatBytes(totalSize)}`;
+                    document.getElementById('progressBytes').innerText = `${formatBytes(totalSize * (p / 100))} / ${formatBytes(totalSize)}`;
                 }, 100);
-
-                let res=await fetch(`/session/upload/${sessionId}`,{method:'POST',body:fd});
-                let data=await res.json();
                 
+                let res = await fetch(`/session/upload/${sessionId}`, { method: 'POST', body: fd });
+                let data = await res.json();
                 clearInterval(intv);
-
-                if(data.msg&&data.msg.includes('uploaded')){
-                    document.getElementById('progressFill').style.width='100%';
-                    document.getElementById('progressPct').innerText='100%';
-                    document.getElementById('progressBytes').innerText=`${formatBytes(totalSize)} / ${formatBytes(totalSize)}`;
-                    
+                
+                if (data.msg && data.msg.includes('uploaded')) {
+                    document.getElementById('progressFill').style.width = '100%';
+                    document.getElementById('progressPct').innerText = '100%';
+                    document.getElementById('progressBytes').innerText = `${formatBytes(totalSize)} / ${formatBytes(totalSize)}`;
                     showAlert(`Successfully encrypted and uploaded ${data.count} files! (One-time download links)`, 'success');
                     showToast(`📁 ${data.count} files secured - each can be downloaded only once`);
                     document.getElementById('fileDropText').innerHTML = 'Click to browse or drag more files (One-time download)';
                     document.getElementById('fileInput').value = '';
-                    setTimeout(()=>{progDiv.style.display='none';},4000);
-                }else{
-                    showAlert(data.msg||'Upload failed','error');
-                    progDiv.style.display='none';
+                    setTimeout(() => { progDiv.style.display = 'none'; }, 4000);
+                } else {
+                    showAlert(data.msg || 'Upload failed', 'error');
+                    progDiv.style.display = 'none';
                 }
-            }catch(e){
-                showAlert('Upload error occurred.','error');
-                progDiv.style.display='none';
+            } catch (e) {
+                showAlert('Upload error occurred.', 'error');
+                progDiv.style.display = 'none';
             }
         }
         
-        async function endMySession(){
-            if(!sessionId){showAlert('No active session to end.','error');return;}
-            let confirmEnd=confirm('End this session? Cryptographic keys will be destroyed and both parties will exit.');
-            if(!confirmEnd) return;
-            try{
-                let res=await fetch(`/session/terminate/${sessionId}`,{method:'POST'});
-                let data=await res.json();
-                if(data.terminated===true || data.msg.includes('terminated')){
+        async function endMySession() {
+            if (!sessionId) { showAlert('No active session to end.', 'error'); return; }
+            let confirmEnd = confirm('End this session? Cryptographic keys will be destroyed and both parties will exit.');
+            if (!confirmEnd) return;
+            try {
+                let res = await fetch(`/session/terminate/${sessionId}`, { method: 'POST' });
+                let data = await res.json();
+                if (data.terminated === true || data.msg.includes('terminated')) {
                     showToast('✅ Session permanently terminated!');
-                    if(timerInterval) clearInterval(timerInterval);
-                    if(pollInterval) clearInterval(pollInterval);
-                    setTimeout(()=>{
-                        window.location.href='/';
-                    },2000);
-                }else{
-                    showAlert(data.msg||'Failed','error');
+                    if (timerInterval) clearInterval(timerInterval);
+                    if (pollInterval) clearInterval(pollInterval);
+                    setTimeout(() => { window.location.href = '/'; }, 2000);
+                } else {
+                    showAlert(data.msg || 'Failed', 'error');
                 }
-            }catch(e){showAlert('Error terminating session.','error');}
+            } catch (e) { showAlert('Error terminating session.', 'error'); }
         }
         
         const dropZone = document.querySelector('.file-drop-zone');
-        if(dropZone) {
+        if (dropZone) {
             dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--success)'; });
             dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.style.borderColor = 'rgba(99, 102, 241, 0.5)'; });
             dropZone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 dropZone.style.borderColor = 'rgba(99, 102, 241, 0.5)';
-                if(e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                     document.getElementById('fileInput').files = e.dataTransfer.files;
                     updateFileName();
                 }
