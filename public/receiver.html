@@ -40,6 +40,9 @@
         h3 i { color: var(--accent); }
 
         .msg-box { background: rgba(0,0,0,0.5); border-radius: 16px; padding: 20px; margin: 20px 0; word-wrap: break-word; font-size: 1.1rem; line-height: 1.5; border: 1px solid rgba(99, 102, 241, 0.3); box-shadow: inset 0 0 15px rgba(0,0,0,0.5); }
+        
+        .one-time-badge { background: rgba(139, 92, 246, 0.2); border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; color: var(--accent); margin-left: 10px; }
+        .unavailable-file { opacity: 0.6; filter: grayscale(0.3); }
     </style>
 </head>
 <body>
@@ -60,6 +63,9 @@
                     <label>Session Code</label>
                     <input type="text" id="sessionInput" placeholder="Paste the session code here to connect" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 14px 20px; color: var(--text-main); font-family: var(--font-body); width: 100%; outline: none; margin-bottom: 5px;">
                 </div>
+                <div id="passwordRequiredBox" style="display:none; margin-bottom: 15px;">
+                    <input type="password" id="sessionPassword" placeholder="Session Password" style="background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 12px; padding: 14px 20px; color: var(--text-main); width: 100%; outline: none;">
+                </div>
                 <button class="btn-primary btn-block" style="background: linear-gradient(135deg, var(--accent) 0%, #be185d 100%);" onclick="joinNow()"><i class="fas fa-link"></i> Connect to Session</button>
                 
                 <div id="sessionPanel" style="display:none; margin-top: 30px;">
@@ -76,12 +82,9 @@
                     <div id="textBox" style="display:none;" class="msg-box"></div>
                     
                     <hr>
-                    <h3><i class="fas fa-file-shield"></i> Receive Encrypted File</h3>
+                    <h3><i class="fas fa-file-shield"></i> Receive Encrypted Files <span class="one-time-badge"><i class="fas fa-hourglass-half"></i> One-Time Download</span></h3>
                     <button class="btn-secondary btn-block" onclick="getFileInfo()"><i class="fas fa-sync-alt"></i> Check for New Files</button>
                     <div id="fileInfoBox"></div>
-                    <a id="downloadLink" href="#" style="display:none; text-decoration: none;" class="btn-primary btn-block"><i class="fas fa-cloud-download-alt"></i> Decrypt & Download File</a>
-                    
-
                 </div>
                 <div id="msgArea"></div>
             </div>
@@ -91,6 +94,7 @@
     <script>
         let myCode = null;
         let intervalId = null;
+        let sessionPassword = null;
         
         function showToast(msg, type='success'){
             let container = document.getElementById('toastContainer');
@@ -124,29 +128,65 @@
             if(sessionCode){
                 document.getElementById('sessionInput').value = sessionCode;
                 showToast('Session code loaded from secure link!','success');
-                setTimeout(() => { joinNow(); }, 1000);
+                setTimeout(() => { checkIfPasswordRequired(); }, 500);
             }
+        }
+        
+        async function checkIfPasswordRequired() {
+            let code = document.getElementById('sessionInput').value.trim();
+            if(!code) return;
+            try {
+                let res = await fetch(`/session/info/${code}`);
+                let data = await res.json();
+                if(data.requiresPassword) {
+                    document.getElementById('passwordRequiredBox').style.display = 'block';
+                    showToast('This session is password protected. Please enter the password.', 'info');
+                } else {
+                    document.getElementById('passwordRequiredBox').style.display = 'none';
+                }
+            } catch(e) {}
         }
         
         async function joinNow(){
             let code=document.getElementById('sessionInput').value.trim();
             if(!code){showAlert('Please enter a session code','error');return;}
-            myCode=code;
+            
+            let password = document.getElementById('sessionPassword')?.value || null;
+            myCode = code;
+            sessionPassword = password;
+            
             try{
-                let res=await fetch(`/session/join/${code}`,{method:'POST'});
+                let res=await fetch(`/session/join/${code}`,{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({ password: password })
+                });
                 let data=await res.json();
                 if(data.msg === 'receiver joined' || data.msg === 'receiver joined the session'){
                     document.getElementById('sessionPanel').style.display='block';
                     window.scrollTo({ top: document.getElementById('sessionPanel').offsetTop, behavior: 'smooth' });
                     showToast('✅ Connection securely established!','success');
                     startChecking();
-                }else{
+                } else if(data.msg === 'password required') {
+                    document.getElementById('passwordRequiredBox').style.display = 'block';
+                    showAlert('This session requires a password. Please enter it and try again.', 'error');
+                } else if(data.msg === 'incorrect password') {
+                    showAlert('Incorrect password. Please try again.', 'error');
+                } else {
                     showAlert(data.msg || 'Connection failed','error');
                 }
             }catch(e){
                 showAlert('Connection error. Is the server running?','error');
             }
         }
+        
+        document.getElementById('sessionInput')?.addEventListener('input', function() {
+            if(this.value.trim()) {
+                checkIfPasswordRequired();
+            } else {
+                document.getElementById('passwordRequiredBox').style.display = 'none';
+            }
+        });
         
         async function startChecking(){
             if(intervalId) clearInterval(intervalId);
@@ -212,27 +252,28 @@
                 let res=await fetch(`/session/file-info/${myCode}`);
                 let data=await res.json();
                 let infoDiv=document.getElementById('fileInfoBox');
-                let downLink=document.getElementById('downloadLink');
-                if(downLink) downLink.style.display='none';
                 
                 if(data.files && data.files.length > 0){
                     let htmlList = '';
                     data.files.forEach(f => {
                         let kb=(f.fileSize/1024).toFixed(2);
+                        let isAvailable = f.isAvailable !== false;
+                        let unavailableClass = isAvailable ? '' : 'unavailable-file';
                         htmlList += `
                         <div class="alert-box alert-green" style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-                            <div>
+                            <div class="${unavailableClass}">
                                 <i class="fas fa-file-invoice"></i> 
                                 <div style="display:inline-block; margin-left: 10px;">
                                     <strong>${f.fileName}</strong><br>
                                     <span style="opacity:0.8; font-size:0.85em;">${kb} KB | AES-256 Encrypted Vault</span>
+                                    ${!isAvailable ? '<br><small style="color: #f59e0b;"><i class="fas fa-check-circle"></i> Already downloaded (One-time link expired)</small>' : '<br><small style="color: #10b981;"><i class="fas fa-hourglass-half"></i> One-time download - available once</small>'}
                                 </div>
                             </div>
-                            <a href="/session/download/${myCode}?fileId=${f.id}" class="btn-primary" style="text-decoration:none; padding:10px 15px; font-size:0.9em; box-shadow:none;"><i class="fas fa-cloud-download-alt"></i> Download</a>
+                            ${isAvailable ? `<a href="/session/download/${myCode}?fileId=${f.id}" class="btn-primary" style="text-decoration:none; padding:10px 15px; font-size:0.9em; box-shadow:none;"><i class="fas fa-cloud-download-alt"></i> Download</a>` : '<span style="padding:10px 15px; background:rgba(100,100,100,0.3); border-radius:12px; font-size:0.9em;">Expired</span>'}
                         </div>`;
                     });
                     infoDiv.innerHTML = htmlList;
-                    showToast(`📁 ${data.files.length} Encrypted file streams ready for download!`);
+                    showToast(`📁 ${data.files.length} Encrypted file streams ready for download (One-time use!)`);
                 }else{
                     infoDiv.innerHTML = '';
                     showToast('No encrypted files uploaded yet.','error');
